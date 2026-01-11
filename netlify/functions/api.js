@@ -18,15 +18,9 @@ try {
 
 // Helper to launch browser
 async function getBrowser() {
-    const isServerless = !!(process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || process.env.FUNCTION_NAME || process.env.K_SERVICE);
-
-    console.log(`[Browser] Launching. Env: ${isServerless ? 'Serverless' : 'Local'}. HasLambdaPkg: ${!!chromiumLambda}`);
-
-    if (isServerless) {
-        if (!chromiumLambda) {
-            throw new Error(`Cloud Browser Error: @sparticuz/chromium-min is missing or failed to load. Error: ${browserInitError}`);
-        }
-
+    // If the lambda package is available, we assume we are in a serverless environment or want to use it
+    if (chromiumLambda) {
+        console.log('[Browser] Launching with Sparticuz Chromium...');
         try {
             const executablePath = await chromiumLambda.executablePath();
             console.log(`[Browser] Using executable at: ${executablePath}`);
@@ -42,7 +36,7 @@ async function getBrowser() {
         }
     }
 
-    console.log('[Browser] Launching local fallback...');
+    console.log('[Browser] Launching local chromium fallback...');
     try {
         return await chromium.launch({ headless: true });
     } catch (err) {
@@ -329,7 +323,7 @@ app.get('/api/compare', async (req, res) => {
             try {
                 if (typeof scraperFn !== 'function') throw new Error('Scraper function is not defined');
                 const result = await scraperFn(...args);
-                return { name, status: 'success', count: (result.results || []).length, data: result };
+                return { name, status: 'success', shadowError: null, count: (result.results || []).length, data: result };
             } catch (err) {
                 console.error(`[Netlify] ${name} error:`, err.message);
                 const domain = location.toUpperCase() === 'UK' ? 'ebay.co.uk' : 'ebay.com';
@@ -378,7 +372,8 @@ app.get('/api/compare', async (req, res) => {
             debug: {
                 totalTime: Date.now() - startTime,
                 scraperStatus: scraperResults.map(r => ({ name: r.name, status: r.status, error: r.error, count: r.count })),
-                lambdaLoaded: !!chromiumLambda
+                lambdaLoaded: !!chromiumLambda,
+                browserInitError
             },
             results: combinedResults,
             ebayUrl: getResult('eBay').url,
@@ -394,7 +389,7 @@ app.get('/api/compare', async (req, res) => {
         });
     } catch (error) {
         console.error('[Netlify] Fatal error:', error);
-        res.status(500).json({ error: 'Internal error' });
+        res.status(500).json({ error: error.message });
     }
 });
 

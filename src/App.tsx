@@ -31,6 +31,12 @@ function App() {
       if (response.data.debug) {
         setDebugInfo(response.data.debug);
         console.log('Backend Debug Info:', response.data.debug);
+        // Explicitly log scraper errors if totalTime is suspicious
+        if (response.data.debug.scraperStatus) {
+          response.data.debug.scraperStatus.forEach((s: any) => {
+            if (s.status === 'error') console.error(`[Scraper Error] ${s.name}:`, s.error);
+          });
+        }
       }
       console.log('eBay Search URL:', response.data.ebayUrl);
       console.log('Facebook Search URL:', response.data.facebookUrl);
