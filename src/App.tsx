@@ -26,7 +26,10 @@ function App() {
     setLastQuery(query);
     try {
       const response = await axios.get(`/api/compare?query=${encodeURIComponent(query)}&location=${location}`);
-      console.log('Search Results:', response.data);
+      console.log('Search Results:', response.data.results);
+      if (response.data.debug) {
+        console.log('Backend Debug Info:', response.data.debug);
+      }
       console.log('eBay Search URL:', response.data.ebayUrl);
       console.log('Facebook Search URL:', response.data.facebookUrl);
       console.log('CeX Search URL:', response.data.cexUrl);
