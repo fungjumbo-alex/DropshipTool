@@ -5,13 +5,15 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { chromium } = require('playwright-core');
 
+// Attempt to load chromium-min for serverless environment
 let chromiumLambda;
 try {
     chromiumLambda = require('@sparticuz/chromium-min');
 } catch (e) {
-    // Falls back to local playwright if sparticuz is missing
+    console.log('[Netlify] @sparticuz/chromium-min not found, falling back to local playwright');
 }
 
+// Helper to launch browser
 async function getBrowser() {
     console.log(`[Browser] Attempting launch. Environment: ${process.env.NETLIFY ? 'Netlify' : 'Local'}`);
 
@@ -33,14 +35,15 @@ async function getBrowser() {
     return await chromium.launch({ headless: true });
 }
 
-// --- Scraper Functions ---
+// --- Scraper Implementations ---
 
 async function scrapeEbay(query, location = 'US') {
     let browser;
+    const domain = location.toUpperCase() === 'UK' ? 'ebay.co.uk' : 'ebay.com';
+    const currencyCode = location.toUpperCase() === 'UK' ? 'GBP' : 'USD';
+    const url = `https://www.${domain}/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=12`;
+
     try {
-        const domain = location.toUpperCase() === 'UK' ? 'ebay.co.uk' : 'ebay.com';
-        const currencyCode = location.toUpperCase() === 'UK' ? 'GBP' : 'USD';
-        const url = `https://www.${domain}/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=12`;
         browser = await getBrowser();
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -51,26 +54,23 @@ async function scrapeEbay(query, location = 'US') {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
         try { await page.waitForSelector('.s-item__wrapper', { timeout: 8000 }); } catch (e) { }
 
-        const items = await page.evaluate((currencyCode) => {
-            let results = [];
-            let cards = Array.from(document.querySelectorAll('li.s-item, .s-item'));
-            cards.forEach((card) => {
-                let titleEl = card.querySelector('.s-item__title');
-                let priceEl = card.querySelector('.s-item__price');
-                let linkEl = card.querySelector('.s-item__link');
-                let imgEl = card.querySelector('.s-item__image-img');
-                let title = titleEl ? titleEl.innerText : '';
-                let priceText = priceEl ? priceEl.innerText : '';
-                let price = parseFloat(priceText.replace(/[^0-9.]/g, ''));
-                let link = linkEl ? linkEl.href : '';
-                if (link && title && price > 0) {
+        const items = await page.evaluate((currency) => {
+            const results = [];
+            const cards = Array.from(document.querySelectorAll('li.s-item, .s-item'));
+            cards.forEach(card => {
+                const titleEl = card.querySelector('.s-item__title');
+                const priceEl = card.querySelector('.s-item__price');
+                const linkEl = card.querySelector('.s-item__link');
+                const imgEl = card.querySelector('.s-item__image-img');
+                const price = parseFloat(priceEl?.innerText.replace(/[^0-9.]/g, '') || '0');
+                if (titleEl && price > 0) {
                     results.push({
                         source: 'eBay',
-                        title: title.trim(),
-                        price: price,
-                        currency: currencyCode,
-                        link: link,
-                        image: imgEl ? imgEl.src : null
+                        title: titleEl.innerText.trim(),
+                        price,
+                        currency,
+                        link: linkEl?.href,
+                        image: imgEl?.src
                     });
                 }
             });
@@ -79,32 +79,34 @@ async function scrapeEbay(query, location = 'US') {
         return { results: items.slice(0, 10), url };
     } catch (error) {
         if (process.env.NETLIFY) throw error;
-        return { results: [], url: '' };
+        return { results: [], url };
     } finally { if (browser) await browser.close(); }
 }
 
 async function scrapeFacebook(query, location = 'US') {
     let browser;
+    const currencyCode = location.toUpperCase() === 'UK' ? 'GBP' : 'USD';
+    const city = location.toUpperCase() === 'UK' ? 'london' : 'nyc';
+    const url = `https://www.facebook.com/marketplace/${city}/search/?query=${encodeURIComponent(query)}`;
+
     try {
-        const currencyCode = location.toUpperCase() === 'UK' ? 'GBP' : 'USD';
         browser = await getBrowser();
-        const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36' });
-        const page = await context.newPage();
-        const city = location.toUpperCase() === 'UK' ? 'london' : 'nyc';
-        const url = `https://www.facebook.com/marketplace/${city}/search/?query=${encodeURIComponent(query)}`;
+        const page = await browser.newPage();
         await page.goto(url, { waitUntil: 'networkidle' });
-        try { await page.waitForSelector('a[href*="/marketplace/item/"]', { timeout: 5000 }); } catch (e) { }
-        const items = await page.evaluate((currencyCode) => {
+        try { await page.waitForSelector('a[href*="/marketplace/item/"]', { timeout: 8000 }); } catch (e) { }
+
+        const items = await page.evaluate((currency) => {
             const links = Array.from(document.querySelectorAll('a[href*="/marketplace/item/"]'));
             return links.slice(0, 10).map(link => {
-                const lines = link.innerText.split('\n');
-                const priceMatch = lines.find(l => l.includes('£') || l.includes('$')) || '0';
-                const price = parseFloat(priceMatch.replace(/[^0-9.]/g, ''));
+                const text = link.innerText;
+                const lines = text.split('\n');
+                const priceMatch = lines.find(l => l.includes('£') || l.includes('$'));
+                const price = parseFloat(priceMatch?.replace(/[^0-9.]/g, '') || '0');
                 return {
                     source: 'Facebook',
-                    title: lines.find(l => l.length > 10) || 'Facebook Item',
-                    price: price,
-                    currency: currencyCode,
+                    title: lines.find(l => l.length > 10) || 'Generic Listing',
+                    price,
+                    currency,
                     link: 'https://www.facebook.com' + link.getAttribute('href'),
                     image: link.querySelector('img')?.src
                 };
@@ -113,7 +115,7 @@ async function scrapeFacebook(query, location = 'US') {
         return { results: items, url };
     } catch (error) {
         if (process.env.NETLIFY) throw error;
-        return { results: [], url: '' };
+        return { results: [], url };
     } finally { if (browser) await browser.close(); }
 }
 
@@ -128,12 +130,11 @@ async function scrapeCex(query, location = 'US') {
         await page.waitForSelector('.cx-card-product', { timeout: 5000 }).catch(() => { });
         const items = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('.cx-card-product')).map(card => {
-                const titleEl = card.querySelector('.line-clamp');
-                const priceEl = card.querySelector('.product-main-price');
-                const price = parseFloat(priceEl?.innerText.replace(/[^0-9.]/g, '') || '0');
+                const title = card.querySelector('.line-clamp')?.innerText;
+                const price = parseFloat(card.querySelector('.product-main-price')?.innerText.replace(/[^0-9.]/g, '') || '0');
                 return {
                     source: 'CeX',
-                    title: titleEl?.innerText.trim(),
+                    title,
                     price,
                     currency: 'GBP',
                     link: card.querySelector('a')?.href,
@@ -158,12 +159,12 @@ async function scrapeGumtree(query, location = 'US') {
         await page.goto(url, { waitUntil: 'networkidle' });
         const items = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('article')).map(card => {
-                const titleEl = card.querySelector('h3') || card.querySelector('div[class*="title"]');
-                const priceEl = card.innerText.match(/£\d+/);
-                const price = priceEl ? parseFloat(priceEl[0].replace('£', '')) : 0;
+                const title = card.querySelector('h3')?.innerText || card.querySelector('div[class*="title"]')?.innerText;
+                const priceMatch = card.innerText.match(/£[\d,]+/);
+                const price = priceMatch ? parseFloat(priceMatch[0].replace(/[^0-9.]/g, '')) : 0;
                 return {
                     source: 'Gumtree',
-                    title: titleEl?.innerText.trim(),
+                    title,
                     price,
                     currency: 'GBP',
                     link: card.querySelector('a')?.href,
@@ -185,7 +186,7 @@ async function scrapeBackMarket(query, location = 'US') {
     try {
         browser = await getBrowser();
         const page = await browser.newPage();
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.goto(url, { waitUntil: 'domcontentloaded' });
         const items = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('a[data-test="product-item"]')).map(card => {
                 const title = card.querySelector('h2')?.innerText;
@@ -218,11 +219,11 @@ async function scrapeMusicMagpie(query, location = 'US') {
         await page.goto(url, { waitUntil: 'domcontentloaded' });
         const items = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('a')).filter(a => a.innerText.includes('£')).map(card => {
-                const lines = card.innerText.split('\n');
-                const priceMatch = card.innerText.match(/£[\d,]+/);
+                const text = card.innerText;
+                const priceMatch = text.match(/£[\d,]+/);
                 return {
                     source: 'MusicMagpie',
-                    title: lines[0],
+                    title: text.split('\n')[0],
                     price: priceMatch ? parseFloat(priceMatch[0].replace(/[^0-9.]/g, '')) : 0,
                     currency: 'GBP',
                     link: card.href,
@@ -250,7 +251,7 @@ async function scrapeCashConverters(query, location = 'US') {
                 const priceMatch = card.innerText.match(/£[\d,]+/);
                 return {
                     source: 'CashConverters',
-                    title: card.querySelector('img')?.alt || 'Item',
+                    title: card.querySelector('img')?.alt || 'Used Item',
                     price: priceMatch ? parseFloat(priceMatch[0].replace(/[^0-9.]/g, '')) : 0,
                     currency: 'GBP',
                     link: card.href,
@@ -299,14 +300,18 @@ app.get('/api/compare', async (req, res) => {
     const { query, location = 'US' } = req.query;
     if (!query) return res.status(400).json({ error: 'Query parameter is required' });
 
+    console.log(`[Netlify] Comparison requested: "${query}" in ${location}`);
+
     try {
         const startTime = Date.now();
         const wrapScraper = async (name, scraperFn, ...args) => {
             const sStart = Date.now();
             try {
+                if (typeof scraperFn !== 'function') throw new Error('Scraper function is not defined');
                 const result = await scraperFn(...args);
                 return { name, status: 'success', count: result.results.length, data: result };
             } catch (err) {
+                console.error(`[Netlify] ${name} error:`, err.message);
                 return { name, status: 'error', error: err.message, count: 0, data: { results: [], url: '' } };
             }
         };
@@ -322,8 +327,8 @@ app.get('/api/compare', async (req, res) => {
             location === 'UK' ? wrapScraper('CeXSell', scrapeCexSell, query) : Promise.resolve({ name: 'CeXSell', status: 'skipped', data: { results: [], url: '' } })
         ]);
 
-        const getResult = (name) => scraperResults.find(r => r.name === name)?.data || { results: [], url: '' };
         const combinedResults = scraperResults.flatMap(r => r.data.results || []).sort((a, b) => a.price - b.price);
+        const getResult = (name) => scraperResults.find(r => r.name === name)?.data || { results: [], url: '' };
 
         const cexSellData = getResult('CeXSell');
         let cexCashPriceLow = 0, cexCashPriceHigh = 0;
@@ -340,11 +345,20 @@ app.get('/api/compare', async (req, res) => {
                 scraperStatus: scraperResults.map(r => ({ name: r.name, status: r.status, error: r.error, count: r.count }))
             },
             results: combinedResults,
+            ebayUrl: getResult('eBay').url,
+            facebookUrl: getResult('Facebook').url,
+            cexUrl: getResult('CeX').url,
+            gumtreeUrl: getResult('Gumtree').url,
+            backmarketUrl: getResult('BackMarket').url,
+            musicmagpieUrl: getResult('MusicMagpie').url,
+            cashconvertersUrl: getResult('CashConverters').url,
+            cexSellUrl: getResult('CeXSell').url,
             cexSellPriceLow: cexCashPriceLow,
             cexSellPriceHigh: cexCashPriceHigh
         });
     } catch (error) {
-        res.status(500).json({ error: 'Internal Error' });
+        console.error('[Netlify] Fatal error:', error);
+        res.status(500).json({ error: 'Failed to process request' });
     }
 });
 
