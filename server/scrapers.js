@@ -11,25 +11,55 @@ try {
 }
 
 async function getBrowser() {
-    // Check if we are running in a serverless environment (Linux) or locally (Mac/Win)
-    const isServerless = process.env.FUNCTION_NAME || process.env.K_SERVICE || process.platform === 'linux';
+    const isProduction = process.platform === 'linux';
+    const isServerless = process.env.FUNCTION_NAME || process.env.K_SERVICE || isProduction;
 
     if (isServerless && chromiumLambda) {
-        const executablePath = await chromiumLambda.executablePath();
-        return await chromium.launch({
-            args: [...(chromiumLambda.args || []), '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-            executablePath: executablePath,
-            headless: true,
-        });
+        try {
+            const executablePath = await chromiumLambda.executablePath();
+            if (!executablePath) throw new Error('Chromium executable path not found');
+
+            console.log(`[Browser] Launching v131 (Sparticuz) from ${executablePath}`);
+
+            const launchBrowser = async (attempt = 1) => {
+                try {
+                    // Start with sparticuz default args
+                    const stabilityArgs = [...chromiumLambda.args];
+
+                    // Add/Ensure critical flags if not present
+                    if (!stabilityArgs.includes('--no-sandbox')) stabilityArgs.push('--no-sandbox');
+                    if (!stabilityArgs.includes('--disable-setuid-sandbox')) stabilityArgs.push('--disable-setuid-sandbox');
+                    if (!stabilityArgs.includes('--disable-dev-shm-usage')) stabilityArgs.push('--disable-dev-shm-usage');
+
+                    return await chromium.launch({
+                        args: stabilityArgs,
+                        executablePath: executablePath,
+                        headless: true,
+                        timeout: 30000
+                    });
+                } catch (err) {
+                    if (attempt < 3 && (err.message.includes('EFAULT') || err.message.includes('closed') || err.message.includes('spawn') || err.message.includes('signal') || err.message.includes('SIGTRAP'))) {
+                        console.warn(`[Browser] Launch attempt ${attempt} failed: ${err.message}. Retrying...`);
+                        await new Promise(r => setTimeout(r, 2000));
+                        return launchBrowser(attempt + 1);
+                    }
+                    throw err;
+                }
+            };
+
+            return await launchBrowser();
+        } catch (e) {
+            console.error(`[Browser] Production launch failed: ${e.message}`);
+            if (isProduction) throw new Error(`Production Browser Error: ${e.message}`);
+        }
     }
 
-    // Locally or if sparticuz fails, use playwright's default launch
-    // This expects 'npx playwright install chromium' has been run locally
+    // Local Mac/Windows launch
+    console.log('[Browser] Launching Local Chromium...');
     try {
         return await chromium.launch({ headless: true });
     } catch (e) {
         console.error('Local browser launch failed:', e.message);
-        // Fallback: try to see if we can find a local chrome
         throw new Error('Could not launch browser. Ensure playwright is installed: npx playwright install chromium');
     }
 }
@@ -128,12 +158,15 @@ async function scrapeEbay(query, location = 'US') {
 
         // Check for bot wall
         const title = await page.title();
-        if (title.includes('Attention Required') || title.includes('Checking your browser')) {
-            console.warn('eBay: Bot protection page detected.');
+        if (title.includes('Attention Required') || title.includes('Checking your browser') || title.includes('Access Denied')) {
+            console.warn(`eBay: Bot protection or access denied. Title: ${title}`);
         }
 
         try {
-            await page.waitForSelector('.s-item__wrapper, .s-item, li[data-view], div.s-item__info', { timeout: 10000 });
+            await Promise.race([
+                page.waitForSelector('.s-item__wrapper, .s-item, li[data-view], div.s-item__info, li.s-card', { timeout: 15000 }),
+                page.waitForTimeout(5000) // At least wait 5s for slower loads
+            ]);
         } catch (e) {
             console.warn('eBay: Timeout waiting for main selectors');
         }
@@ -227,12 +260,12 @@ async function scrapeEbay(query, location = 'US') {
 
         // Deduplicate by link
         const unique = items.filter((v, i, a) => a.findIndex(v2 => (v2.link === v.link)) === i);
-        return { results: unique.slice(0, 10), url };
+        return { results: unique.slice(0, 10), url, pageTitle: title };
 
     } catch (error) {
         console.error('eBay Scrape Error:', error.message);
         const domain = location.toUpperCase() === 'UK' ? 'ebay.co.uk' : 'ebay.com';
-        return { results: [], url: `https://www.${domain}/sch/i.html?_nkw=${encodeURIComponent(query)}` };
+        return { results: [], url: `https://www.${domain}/sch/i.html?_nkw=${encodeURIComponent(query)}`, error: error.message };
     } finally {
         if (browser) await browser.close();
     }
@@ -242,35 +275,73 @@ async function scrapeFacebook(query, location = 'US') {
     let browser;
     try {
         const currencyCode = location.toUpperCase() === 'UK' ? 'GBP' : 'USD';
+        const isProduction = process.env.FUNCTION_NAME || process.env.K_SERVICE || process.platform === 'linux';
+
         browser = await getBrowser();
-        const page = await createStealthContext(browser, location);
+        // Use mobile for Facebook, often has much lower bot security
+        const page = await createStealthContext(browser, location, {
+            userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
+            viewport: { width: 390, height: 844 },
+            isMobile: true,
+            hasTouch: true
+        });
 
         const city = location.toUpperCase() === 'UK' ? 'london' : 'nyc';
-        const url = `https://www.facebook.com/marketplace/${city}/search/?query=${encodeURIComponent(query)}`;
-        console.log(`Facebook Search URL (${location}): ${url}`);
-
-        // Set a cookie to try and bypass location selection
-        await page.context().addCookies([{
-            name: 'wd',
-            value: '1920x1080',
-            domain: '.facebook.com',
-            path: '/'
-        }]);
+        // Force mobile domain for better consistency and bypass
+        const url = `https://m.facebook.com/marketplace/${city}/search/?query=${encodeURIComponent(query)}`;
+        console.log(`Facebook Search URL (Mobile): ${url}`);
 
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
         await page.waitForTimeout(5000);
 
-        // Close any "Close" or "Not now" buttons if present
+        // Check for blocking/login walls
+        const pageContent = await page.content();
+        const pageTitle = await page.title();
+        const pageUrl = page.url();
+
+        // Detect various blocking scenarios
+        if (pageUrl.includes('/login') || pageUrl.includes('/checkpoint')) {
+            console.warn(`Facebook: Redirected to login/checkpoint page - ${pageUrl}`);
+            throw new Error('Facebook requires login (datacenter IP blocked)');
+        }
+
+        if (pageTitle.toLowerCase().includes('log in') || pageTitle.toLowerCase().includes('log into')) {
+            console.warn(`Facebook: Login wall detected - Title: ${pageTitle}`);
+            throw new Error('Facebook login wall detected (likely blocked)');
+        }
+
+        if (pageContent.includes('Please log in to continue') ||
+            pageContent.includes('You must log in') ||
+            pageContent.includes('Create new account')) {
+            console.warn('Facebook: Login required message found in page content');
+            throw new Error('Facebook requires authentication (blocked)');
+        }
+
+        // More aggressive dismissal of multiple overlay types
         try {
-            // Find buttons by text too
             await page.evaluate(() => {
-                const btns = Array.from(document.querySelectorAll('div[role="button"], span'));
-                const closeBtn = btns.find(b => b.innerText.includes('Close') || b.innerText.includes('Not now') || b.innerText === '✕');
-                if (closeBtn) closeBtn.click();
+                const closeSelectors = [
+                    'div[aria-label="Close"]',
+                    'div[aria-label="Dismiss"]',
+                    'div[role="button"]:has-text("Close")',
+                    'div[role="button"]:has-text("Not now")',
+                    'i[class*="close"]'
+                ];
+
+                // Try to find and click any close-like button
+                const buttons = Array.from(document.querySelectorAll('div[role="button"], span, i, div'));
+                const dismissBtn = buttons.find(b => {
+                    const label = (b.getAttribute('aria-label') || '').toLowerCase();
+                    const text = (b.innerText || '').toLowerCase();
+                    return label.includes('close') || label.includes('dismiss') ||
+                        text === 'close' || text === 'not now' || text === '✕';
+                });
+
+                if (dismissBtn) dismissBtn.click();
             });
         } catch (e) { }
 
-        // Scroll multiple times to load items
+        // Two scrolls to ensure items load
         await page.evaluate(async () => {
             window.scrollBy(0, 800);
             await new Promise(r => setTimeout(r, 1000));
@@ -279,51 +350,61 @@ async function scrapeFacebook(query, location = 'US') {
         });
 
         try {
-            await page.waitForSelector('a[href*="/marketplace/item/"]', { timeout: 10000 }).catch(() => { });
+            await page.waitForSelector('a[href*="/marketplace/item/"]', { timeout: 15000 }).catch(() => { });
         } catch (e) {
-            console.warn('Facebook: Timeout waiting for selectors');
+            console.warn('Facebook: Timeout waiting for item links');
         }
 
-        const items = await page.evaluate((currencyCode) => {
+        const heuristic = (currencyCode) => {
             const results = [];
-            const links = Array.from(document.querySelectorAll('a'));
+            // Look for both m.facebook and www style links
+            const links = Array.from(document.querySelectorAll('a[href*="/marketplace/item/"]'));
 
-            const itemLinks = links.filter(l => {
-                const href = l.getAttribute('href') || '';
-                const text = l.innerText;
-                return href.includes('/marketplace/item/') && (text.includes('£') || text.includes('$'));
-            });
-
-            return itemLinks.map(link => {
-                const text = link.innerText;
+            links.forEach(link => {
+                const text = link.innerText || '';
                 const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-                const priceMatch = lines.find(l => l.includes('£') || l.includes('$')) || '0';
-                const title = lines.find(l => l.length > 8 && !l.includes('£') && !l.includes('$') && !l.includes('·')) || 'Facebook Item';
-                const locationText = lines.find(l => l.length > 3 && !l.includes('£') && !l.includes('$') && lines.indexOf(l) > lines.indexOf(priceMatch)) || 'Unknown';
+                if (lines.length < 2) return;
 
-                const match = priceMatch.match(/[\£\$]\s?([\d,]+(\.\d{2})?)/);
+                // On mobile: Price is usually first, but we search all lines for safety
+                let priceText = '';
+                let title = '';
+
+                const priceIdx = lines.findIndex(l => l.includes('£') || l.includes('$'));
+                if (priceIdx !== -1) {
+                    priceText = lines[priceIdx];
+                    // Title is usually the next substantial line
+                    title = lines.find((l, idx) => idx !== priceIdx && l.length > 5) || lines[priceIdx + 1] || 'Facebook Item';
+                }
+
+                if (!priceText) return;
+
+                const match = priceText.match(/[\£\$]\s?([\d,]+(\.\d{2})?)/);
                 const parsedPrice = match ? parseFloat(match[1].replace(/,/g, '')) : 0;
 
-                return {
-                    source: 'Facebook',
-                    title: title,
-                    price: isNaN(parsedPrice) ? 0 : parsedPrice,
-                    currency: currencyCode,
-                    link: link.href.startsWith('http') ? link.href : 'https://www.facebook.com' + link.getAttribute('href'),
-                    image: link.querySelector('img')?.getAttribute('src'),
-                    condition: 'Used',
-                    originalPrice: priceMatch,
-                    location: locationText
-                };
-            }).filter(item => item.price > 0);
-        }, currencyCode);
+                if (parsedPrice > 0) {
+                    results.push({
+                        source: 'Facebook',
+                        title: title.replace(/,.*$/, '').trim(), // Clean up location if it's appended
+                        price: parsedPrice,
+                        currency: currencyCode,
+                        link: link.href.startsWith('http') ? link.href : 'https://www.facebook.com' + link.getAttribute('href'),
+                        image: link.querySelector('img')?.getAttribute('src'),
+                        condition: 'Used',
+                        originalPrice: priceText,
+                        location: 'Marketplace'
+                    });
+                }
+            });
+            return results;
+        };
 
-        return { results: items, url };
+        const items = await page.evaluate(heuristic, currencyCode);
+        return { results: items.slice(0, 25), url, pageTitle: await page.title() };
     } catch (error) {
-        console.error('Facebook Scrape Error:', error);
+        console.error('Facebook Scrape Error:', error.message);
         const city = location.toUpperCase() === 'UK' ? 'london' : 'nyc';
-        return { results: [], url: `https://www.facebook.com/marketplace/${city}/search/?query=${encodeURIComponent(query)}` };
+        return { results: [], url: `https://www.facebook.com/marketplace/${city}/search/?query=${encodeURIComponent(query)}`, error: error.message };
     } finally {
         if (browser) await browser.close();
     }
@@ -345,17 +426,22 @@ async function scrapeCex(query, location = 'US') {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
         await page.waitForTimeout(2000);
 
-        await page.waitForSelector('.cx-card-product', { timeout: 5000 }).catch(() => { });
+        // Wait for results
+        try {
+            await page.waitForSelector('.cx-card-product, .wrapper-box, .product-card', { timeout: 15000 });
+        } catch (e) {
+            console.warn('CeX Buy: Timeout waiting for product cards');
+        }
 
         const items = await page.evaluate(() => {
             const results = [];
-            const cards = document.querySelectorAll('.cx-card-product');
+            const cards = document.querySelectorAll('.cx-card-product, .wrapper-box, .product-card');
 
             cards.forEach(card => {
-                const titleEl = card.querySelector('.line-clamp');
-                const priceEl = card.querySelector('.product-main-price');
-                const imgEl = card.querySelector('.card-img img');
-                const linkEl = card.querySelector('a[href*="product-detail"]');
+                const titleEl = card.querySelector('.line-clamp, h3, .product-title');
+                const priceEl = card.querySelector('.product-main-price, .cash-price, .price');
+                const imgEl = card.querySelector('img');
+                const linkEl = card.querySelector('a[href*="product-detail"], a');
                 const stockEl = card.querySelector('.product-stock-availability');
 
                 if (titleEl && priceEl) {
@@ -382,10 +468,10 @@ async function scrapeCex(query, location = 'US') {
             return results;
         });
 
-        return { results: items.slice(0, 10), url };
+        return { results: items.slice(0, 10), url, pageTitle: await page.title() };
     } catch (error) {
-        console.error('CeX Scrape Error:', error);
-        return { results: [], url };
+        console.error('CeX Scrape Error:', error.message);
+        return { results: [], url: `https://uk.webuy.com/search?stext=${encodeURIComponent(query)}`, error: error.message };
     } finally {
         if (browser) await browser.close();
     }

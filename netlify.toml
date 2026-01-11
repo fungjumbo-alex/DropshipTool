@@ -5,7 +5,7 @@
 
 [[redirects]]
   from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
+  to = "https://api-hjtd337cca-uc.a.run.app/api/:splat"
   status = 200
 
 [functions]

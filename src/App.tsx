@@ -25,46 +25,81 @@ function App() {
     setIsLoading(true);
     setError(null);
     setLastQuery(query);
-    try {
-      const response = await axios.get(`/api/compare?query=${encodeURIComponent(query)}&location=${location}`);
-      console.log('Search Results:', response.data.results);
-      if (response.data.debug) {
-        setDebugInfo(response.data.debug);
-        console.log('Backend Debug Info:', response.data.debug);
-        // Explicitly log scraper errors if totalTime is suspicious
-        if (response.data.debug.scraperStatus) {
-          response.data.debug.scraperStatus.forEach((s: any) => {
-            if (s.status === 'error') console.error(`[Scraper Error] ${s.name}:`, s.error);
-          });
-        }
-      }
-      console.log('eBay Search URL:', response.data.ebayUrl);
-      console.log('Facebook Search URL:', response.data.facebookUrl);
-      console.log('CeX Search URL:', response.data.cexUrl);
-      console.log('Gumtree Search URL:', response.data.gumtreeUrl);
-      console.log('BackMarket Search URL:', response.data.backmarketUrl);
-      console.log('MusicMagpie Search URL:', response.data.musicmagpieUrl);
-      console.log('CashConverters Search URL:', response.data.cashconvertersUrl);
-      console.log('CeX Sell URL:', response.data.cexSellUrl);
-      setResults(response.data.results);
-      setCexSellLow(response.data.cexSellPriceLow || 0);
-      setCexSellHigh(response.data.cexSellPriceHigh || 0);
-      setCurrency(location === 'UK' ? 'GBP' : 'USD');
+    setResults([]); // Clear previous results
+    setDebugInfo({ scraperStatus: [] });
 
-      // Smart Auto-Range: Set Min/Max based on results
-      if (response.data.results.length > 0) {
-        const prices = response.data.results.map((r: Product) => r.price).filter((p: number) => !isNaN(p));
-        if (prices.length > 0) {
-          const max = Math.ceil(Math.max(...prices));
-          // Round up to nearest 10 or 100 for cleaner UI
-          const niceMax = Math.ceil(max / 50) * 50;
-          setMaxPrice(niceMax);
-          setMinPrice(50);
+    const sources = [
+      { id: 'ebay', name: 'eBay' },
+      { id: 'facebook', name: 'Facebook' },
+      { id: 'cex', name: 'CeX' },
+      { id: 'gumtree', name: 'Gumtree' },
+      { id: 'musicmagpie', name: 'MusicMagpie' },
+      { id: 'cashconverters', name: 'CashConverters' },
+      { id: 'backmarket', name: 'BackMarket' },
+      { id: 'cexsell', name: 'CeX Arbitrage' }
+    ];
+
+    setCurrency(location === 'UK' ? 'GBP' : 'USD');
+
+    // Helper to fetch a single source
+    const fetchSource = async (sourceId: string) => {
+      try {
+        const response = await axios.get(`/api/compare?query=${encodeURIComponent(query)}&location=${location}&source=${sourceId}`);
+
+        // Update results incrementally
+        if (response.data.results && response.data.results.length > 0) {
+          setResults(prev => [...prev, ...response.data.results].sort((a, b) => a.price - b.price));
+        }
+
+        // Special handling for CeX Sell prices
+        if (sourceId === 'cexsell') {
+          setCexSellLow(response.data.cexSellPriceLow || 0);
+          setCexSellHigh(response.data.cexSellPriceHigh || 0);
+        }
+
+        // Update debug info incrementally
+        if (response.data.debug?.scraperStatus) {
+          setDebugInfo((prev: any) => ({
+            ...prev,
+            scraperStatus: [...(prev?.scraperStatus || []), ...response.data.debug.scraperStatus]
+          }));
+        }
+      } catch (err: any) {
+        console.error(`Failed to fetch ${sourceId}:`, err);
+        // Update debug info with error status
+        setDebugInfo((prev: any) => ({
+          ...prev,
+          scraperStatus: [...(prev?.scraperStatus || []), {
+            name: sourceId.charAt(0).toUpperCase() + sourceId.slice(1),
+            status: 'error',
+            error: err.response?.data?.message || err.message,
+            count: 0
+          }]
+        }));
+      }
+    };
+
+    try {
+      // Run the first few essentially important ones first
+      // In production, we run them in small batches to stay safe
+      const isLocal = window.location.hostname === 'localhost';
+
+      if (isLocal) {
+        // Parallel for local
+        await Promise.all(sources.map(s => fetchSource(s.id)));
+      } else {
+        // Sequential/Slow Parallel for production
+        // We do 2 at a time with a stagger to stay safe
+        for (let i = 0; i < sources.length; i += 2) {
+          const chunk = sources.slice(i, i + 2);
+          await Promise.all(chunk.map(s => fetchSource(s.id)));
+          // Small delay before the next chunk
+          if (i + 2 < sources.length) await new Promise(r => setTimeout(r, 300));
         }
       }
     } catch (err) {
-      console.error(err);
-      setError('Failed to fetch results. Please make sure the backend is running.');
+      console.error('Core search error:', err);
+      setError('Search encountered an error. Some results may be missing.');
     } finally {
       setIsLoading(false);
     }
