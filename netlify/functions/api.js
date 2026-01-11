@@ -9,30 +9,39 @@ const { chromium } = require('playwright-core');
 let chromiumLambda;
 try {
     chromiumLambda = require('@sparticuz/chromium-min');
+    console.log('[Netlify] @sparticuz/chromium-min loaded successfully');
 } catch (e) {
-    console.log('[Netlify] @sparticuz/chromium-min not found, falling back to local playwright');
+    console.log('[Netlify] @sparticuz/chromium-min not found:', e.message);
 }
 
 // Helper to launch browser
 async function getBrowser() {
-    console.log(`[Browser] Attempting launch. Environment: ${process.env.NETLIFY ? 'Netlify' : 'Local'}`);
+    const isServerless = !!(process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || process.env.FUNCTION_NAME || process.env.K_SERVICE || chromiumLambda);
 
-    if (process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || process.env.FUNCTION_NAME || process.env.K_SERVICE) {
-        if (!chromiumLambda) {
-            console.error('[Browser] chromiumLambda is not defined! Check if @sparticuz/chromium-min is installed.');
-            throw new Error('chromiumLambda is not defined');
-        }
+    console.log(`[Browser] Launch Attempt. Serverless DevDetected: ${isServerless}`);
+    console.log(`[Browser] Env Check - NETLIFY: ${process.env.NETLIFY}, AWS: ${process.env.AWS_EXECUTION_ENV}, FUNC: ${process.env.FUNCTION_NAME}`);
 
+    if (isServerless && chromiumLambda) {
         console.log('[Browser] Launching with Sparticuz Chromium...');
-        return await chromium.launch({
-            args: [...(chromiumLambda.args || []), '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-            executablePath: await chromiumLambda.executablePath(),
-            headless: chromiumLambda.headless,
-        });
+        try {
+            return await chromium.launch({
+                args: [...(chromiumLambda.args || []), '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+                executablePath: await chromiumLambda.executablePath(),
+                headless: chromiumLambda.headless,
+            });
+        } catch (err) {
+            console.error('[Browser] Sparticuz Launch Failed:', err.message);
+            throw err;
+        }
     }
 
-    console.log('[Browser] Launching local chromium...');
-    return await chromium.launch({ headless: true });
+    console.log('[Browser] Launching local chromium fallback...');
+    try {
+        return await chromium.launch({ headless: true });
+    } catch (err) {
+        console.error('[Browser] Local Launch Failed:', err.message);
+        throw err;
+    }
 }
 
 // --- Scraper Implementations ---
@@ -62,7 +71,8 @@ async function scrapeEbay(query, location = 'US') {
                 const priceEl = card.querySelector('.s-item__price');
                 const linkEl = card.querySelector('.s-item__link');
                 const imgEl = card.querySelector('.s-item__image-img');
-                const price = parseFloat(priceEl?.innerText.replace(/[^0-9.]/g, '') || '0');
+                const priceMatch = (priceEl?.innerText || '0').match(/[\d.]+/);
+                const price = priceMatch ? parseFloat(priceMatch[0]) : 0;
                 if (titleEl && price > 0) {
                     results.push({
                         source: 'eBay',
@@ -78,8 +88,8 @@ async function scrapeEbay(query, location = 'US') {
         }, currencyCode);
         return { results: items.slice(0, 10), url };
     } catch (error) {
-        if (process.env.NETLIFY) throw error;
-        return { results: [], url };
+        console.error('[eBay] Error:', error.message);
+        throw error; // Let wrapScraper handle it
     } finally { if (browser) await browser.close(); }
 }
 
@@ -101,7 +111,8 @@ async function scrapeFacebook(query, location = 'US') {
                 const text = link.innerText;
                 const lines = text.split('\n');
                 const priceMatch = lines.find(l => l.includes('£') || l.includes('$'));
-                const price = parseFloat(priceMatch?.replace(/[^0-9.]/g, '') || '0');
+                const priceValueMatch = (priceMatch || '0').match(/[\d.]+/);
+                const price = priceValueMatch ? parseFloat(priceValueMatch[0]) : 0;
                 return {
                     source: 'Facebook',
                     title: lines.find(l => l.length > 10) || 'Generic Listing',
@@ -114,8 +125,8 @@ async function scrapeFacebook(query, location = 'US') {
         }, currencyCode);
         return { results: items, url };
     } catch (error) {
-        if (process.env.NETLIFY) throw error;
-        return { results: [], url };
+        console.error('[Facebook] Error:', error.message);
+        throw error;
     } finally { if (browser) await browser.close(); }
 }
 
@@ -127,11 +138,13 @@ async function scrapeCex(query, location = 'US') {
         browser = await getBrowser();
         const page = await browser.newPage();
         await page.goto(url, { waitUntil: 'networkidle' });
-        await page.waitForSelector('.cx-card-product', { timeout: 5000 }).catch(() => { });
+        try { await page.waitForSelector('.cx-card-product', { timeout: 5000 }); } catch (e) { }
         const items = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('.cx-card-product')).map(card => {
                 const title = card.querySelector('.line-clamp')?.innerText;
-                const price = parseFloat(card.querySelector('.product-main-price')?.innerText.replace(/[^0-9.]/g, '') || '0');
+                const priceEl = card.querySelector('.product-main-price');
+                const priceValueMatch = (priceEl?.innerText || '0').match(/[\d.]+/);
+                const price = priceValueMatch ? parseFloat(priceValueMatch[0]) : 0;
                 return {
                     source: 'CeX',
                     title,
@@ -144,8 +157,8 @@ async function scrapeCex(query, location = 'US') {
         });
         return { results: items.slice(0, 10), url };
     } catch (error) {
-        if (process.env.NETLIFY) throw error;
-        return { results: [], url };
+        console.error('[CeX] Error:', error.message);
+        throw error;
     } finally { if (browser) await browser.close(); }
 }
 
@@ -174,8 +187,8 @@ async function scrapeGumtree(query, location = 'US') {
         });
         return { results: items.slice(0, 10), url };
     } catch (error) {
-        if (process.env.NETLIFY) throw error;
-        return { results: [], url };
+        console.error('[Gumtree] Error:', error.message);
+        throw error;
     } finally { if (browser) await browser.close(); }
 }
 
@@ -204,8 +217,8 @@ async function scrapeBackMarket(query, location = 'US') {
         });
         return { results: items.slice(0, 10), url };
     } catch (error) {
-        if (process.env.NETLIFY) throw error;
-        return { results: [], url };
+        console.error('[BackMarket] Error:', error.message);
+        throw error;
     } finally { if (browser) await browser.close(); }
 }
 
@@ -233,8 +246,8 @@ async function scrapeMusicMagpie(query, location = 'US') {
         });
         return { results: items.slice(0, 10), url };
     } catch (error) {
-        if (process.env.NETLIFY) throw error;
-        return { results: [], url };
+        console.error('[MusicMagpie] Error:', error.message);
+        throw error;
     } finally { if (browser) await browser.close(); }
 }
 
@@ -261,8 +274,8 @@ async function scrapeCashConverters(query, location = 'US') {
         });
         return { results: items.slice(0, 10), url };
     } catch (error) {
-        if (process.env.NETLIFY) throw error;
-        return { results: [], url };
+        console.error('[CashConverters] Error:', error.message);
+        throw error;
     } finally { if (browser) await browser.close(); }
 }
 
@@ -285,8 +298,8 @@ async function scrapeCexSell(query) {
         });
         return { results: items, url };
     } catch (error) {
-        if (process.env.NETLIFY) throw error;
-        return { results: [], url };
+        console.error('[CeXSell] Error:', error.message);
+        throw error;
     } finally { if (browser) await browser.close(); }
 }
 
@@ -300,19 +313,22 @@ app.get('/api/compare', async (req, res) => {
     const { query, location = 'US' } = req.query;
     if (!query) return res.status(400).json({ error: 'Query parameter is required' });
 
-    console.log(`[Netlify] Comparison requested: "${query}" in ${location}`);
+    console.log(`[Netlify] Start comparison: "${query}" in ${location}`);
 
     try {
         const startTime = Date.now();
         const wrapScraper = async (name, scraperFn, ...args) => {
             const sStart = Date.now();
             try {
-                if (typeof scraperFn !== 'function') throw new Error('Scraper function is not defined');
                 const result = await scraperFn(...args);
                 return { name, status: 'success', count: result.results.length, data: result };
             } catch (err) {
                 console.error(`[Netlify] ${name} error:`, err.message);
-                return { name, status: 'error', error: err.message, count: 0, data: { results: [], url: '' } };
+                // Return URL for debug even on error
+                const domain = location.toUpperCase() === 'UK' ? 'ebay.co.uk' : 'ebay.com';
+                let fallbackUrl = '';
+                if (name === 'eBay') fallbackUrl = `https://www.${domain}/sch/i.html?_nkw=${encodeURIComponent(query)}`;
+                return { name, status: 'error', error: err.message, count: 0, data: { results: [], url: fallbackUrl } };
             }
         };
 
@@ -334,15 +350,18 @@ app.get('/api/compare', async (req, res) => {
         let cexCashPriceLow = 0, cexCashPriceHigh = 0;
         if (cexSellData.results.length > 0) {
             const prices = cexSellData.results.map(i => i.cashPrice).filter(p => !isNaN(p));
-            cexCashPriceLow = Math.min(...prices);
-            cexCashPriceHigh = Math.max(...prices);
+            if (prices.length > 0) {
+                cexCashPriceLow = Math.min(...prices);
+                cexCashPriceHigh = Math.max(...prices);
+            }
         }
 
         res.json({
             query,
             debug: {
                 totalTime: Date.now() - startTime,
-                scraperStatus: scraperResults.map(r => ({ name: r.name, status: r.status, error: r.error, count: r.count }))
+                scraperStatus: scraperResults.map(r => ({ name: r.name, status: r.status, error: r.error, count: r.count })),
+                isServerless: !!(process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || chromiumLambda)
             },
             results: combinedResults,
             ebayUrl: getResult('eBay').url,
@@ -358,7 +377,7 @@ app.get('/api/compare', async (req, res) => {
         });
     } catch (error) {
         console.error('[Netlify] Fatal error:', error);
-        res.status(500).json({ error: 'Failed to process request' });
+        res.status(500).json({ error: 'Failed' });
     }
 });
 
