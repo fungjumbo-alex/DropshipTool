@@ -27,14 +27,20 @@ app.get('/api/compare', async (req, res) => {
                 console.log(`[Netlify] Starting ${name}...`);
                 const result = await scraperFn(...args);
                 console.log(`[Netlify] Finished ${name} in ${Date.now() - sStart}ms. Found ${result.results.length} items.`);
-                return { name, status: 'success', data: result };
+                return { name, status: 'success', count: result.results.length, data: result };
             } catch (err) {
-                console.error(`[Netlify] ${name} Failed after ${Date.now() - sStart}ms:`, err.message);
-                return { name, status: 'error', error: err.message, data: { results: [], url: '' } };
+                console.error(`[Netlify] ${name} Failed after ${Date.now() - sStart}ms:`, err);
+                return {
+                    name,
+                    status: 'error',
+                    error: err.message || String(err),
+                    count: 0,
+                    data: { results: [], url: '', error: err.message }
+                };
             }
         };
 
-        const results = await Promise.all([
+        const scraperResults = await Promise.all([
             wrapScraper('eBay', scrapeEbay, query, location),
             wrapScraper('Facebook', scrapeFacebook, query, location),
             wrapScraper('CeX', scrapeCex, query, location),
@@ -45,14 +51,16 @@ app.get('/api/compare', async (req, res) => {
             location === 'UK' ? wrapScraper('CeXSell', scrapeCexSell, query) : Promise.resolve({ name: 'CeXSell', status: 'skipped', data: { results: [], url: '' } })
         ]);
 
-        const ebayData = results.find(r => r.name === 'eBay').data;
-        const facebookData = results.find(r => r.name === 'Facebook').data;
-        const cexData = results.find(r => r.name === 'CeX').data;
-        const gumtreeData = results.find(r => r.name === 'Gumtree').data;
-        const backmarketData = results.find(r => r.name === 'BackMarket').data;
-        const musicmagpieData = results.find(r => r.name === 'MusicMagpie').data;
-        const cashconvertersData = results.find(r => r.name === 'CashConverters').data;
-        const cexSellData = results.find(r => r.name === 'CeXSell').data;
+        const getResult = (name) => scraperResults.find(r => r.name === name)?.data || { results: [], url: '' };
+
+        const ebayData = getResult('eBay');
+        const facebookData = getResult('Facebook');
+        const cexData = getResult('CeX');
+        const gumtreeData = getResult('Gumtree');
+        const backmarketData = getResult('BackMarket');
+        const musicmagpieData = getResult('MusicMagpie');
+        const cashconvertersData = getResult('CashConverters');
+        const cexSellData = getResult('CeXSell');
 
         const combinedResults = [
             ...ebayData.results,
@@ -83,7 +91,7 @@ app.get('/api/compare', async (req, res) => {
             timestamp: new Date().toISOString(),
             debug: {
                 totalTime,
-                scraperStatus: results.map(r => ({ name: r.name, status: r.status, error: r.error, count: r.data.results.length }))
+                scraperStatus: scraperResults.map(r => ({ name: r.name, status: r.status, error: r.error, count: r.count }))
             },
             ebayUrl: ebayData.url,
             facebookUrl: facebookData.url,
