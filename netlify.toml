@@ -10,4 +10,5 @@
 
 [functions.api]
   timeout = 26
-  external_node_modules = ["@sparticuz/chromium-min"]
+  node_bundler = "esbuild"
+  external_node_modules = ["@sparticuz/chromium-min", "playwright-core"]
