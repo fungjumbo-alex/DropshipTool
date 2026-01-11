@@ -1,7 +1,16 @@
 const express = require('express');
 const serverless = require('serverless-http');
 const cors = require('cors');
-const { scrapeEbay, scrapeFacebook, scrapeCex, scrapeGumtree, scrapeBackMarket, scrapeMusicMagpie, scrapeCashConverters, scrapeCexSell } = require('./scrapers');
+let scrapers = {};
+try {
+    console.log('[Netlify] Requiring scrapers.js...');
+    scrapers = require('./scrapers');
+    console.log('[Netlify] Scrapers loaded keys:', Object.keys(scrapers));
+} catch (e) {
+    console.error('[Netlify] CRITICAL: Failed to require scrapers.js:', e.message);
+}
+
+const { scrapeEbay, scrapeFacebook, scrapeCex, scrapeGumtree, scrapeBackMarket, scrapeMusicMagpie, scrapeCashConverters, scrapeCexSell } = scrapers;
 
 const app = express();
 
@@ -104,6 +113,16 @@ app.get('/api/compare', async (req, res) => {
             timestamp: new Date().toISOString(),
             debug: {
                 totalTime,
+                types: {
+                    scrapeEbay: typeof scrapeEbay,
+                    scrapeFacebook: typeof scrapeFacebook,
+                    scrapeCex: typeof scrapeCex,
+                    scrapeGumtree: typeof scrapeGumtree,
+                    scrapeBackMarket: typeof scrapeBackMarket,
+                    scrapeMusicMagpie: typeof scrapeMusicMagpie,
+                    scrapeCashConverters: typeof scrapeCashConverters,
+                    scrapeCexSell: typeof scrapeCexSell
+                },
                 scraperStatus: scraperResults.map(r => ({ name: r.name, status: r.status, error: r.error, count: r.count }))
             },
             ebayUrl: ebayData.url,
