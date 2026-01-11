@@ -8,5 +8,5 @@
   to = "/.netlify/functions/api/:splat"
   status = 200
 
-[functions]
+[functions.api]
   timeout = 26
