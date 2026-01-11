@@ -12,6 +12,7 @@
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\""
   },
   "dependencies": {
+    "@sparticuz/chromium": "^131.0.1",
     "@sparticuz/chromium-min": "^143.0.4",
     "@tailwindcss/vite": "^4.1.18",
     "axios": "^1.13.2",

@@ -5,15 +5,15 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { chromium } = require('playwright-core');
 
-// Attempt to load chromium-min for serverless environment
+// Attempt to load chromium for serverless environment
 let chromiumLambda;
 let browserInitError = null;
 try {
-    chromiumLambda = require('@sparticuz/chromium-min');
-    console.log('[Netlify] @sparticuz/chromium-min loaded successfully');
+    chromiumLambda = require('@sparticuz/chromium');
+    console.log('[Netlify] @sparticuz/chromium loaded successfully');
 } catch (e) {
-    browserInitError = `@sparticuz/chromium-min load error: ${e.message}`;
-    console.log('[Netlify] @sparticuz/chromium-min not found:', e.message);
+    browserInitError = `@sparticuz/chromium load error: ${e.message}`;
+    console.log('[Netlify] @sparticuz/chromium not found:', e.message);
 }
 
 // Helper to launch browser
