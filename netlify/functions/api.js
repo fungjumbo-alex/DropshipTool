@@ -7,40 +7,47 @@ const { chromium } = require('playwright-core');
 
 // Attempt to load chromium-min for serverless environment
 let chromiumLambda;
+let browserInitError = null;
 try {
     chromiumLambda = require('@sparticuz/chromium-min');
     console.log('[Netlify] @sparticuz/chromium-min loaded successfully');
 } catch (e) {
+    browserInitError = `@sparticuz/chromium-min load error: ${e.message}`;
     console.log('[Netlify] @sparticuz/chromium-min not found:', e.message);
 }
 
 // Helper to launch browser
 async function getBrowser() {
-    const isServerless = !!(process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || process.env.FUNCTION_NAME || process.env.K_SERVICE || chromiumLambda);
+    const isServerless = !!(process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || process.env.FUNCTION_NAME || process.env.K_SERVICE);
 
-    console.log(`[Browser] Launch Attempt. Serverless DevDetected: ${isServerless}`);
-    console.log(`[Browser] Env Check - NETLIFY: ${process.env.NETLIFY}, AWS: ${process.env.AWS_EXECUTION_ENV}, FUNC: ${process.env.FUNCTION_NAME}`);
+    console.log(`[Browser] Launching. Env: ${isServerless ? 'Serverless' : 'Local'}. HasLambdaPkg: ${!!chromiumLambda}`);
 
-    if (isServerless && chromiumLambda) {
-        console.log('[Browser] Launching with Sparticuz Chromium...');
+    if (isServerless) {
+        if (!chromiumLambda) {
+            throw new Error(`Cloud Browser Error: @sparticuz/chromium-min is missing or failed to load. Error: ${browserInitError}`);
+        }
+
         try {
+            const executablePath = await chromiumLambda.executablePath();
+            console.log(`[Browser] Using executable at: ${executablePath}`);
+
             return await chromium.launch({
                 args: [...(chromiumLambda.args || []), '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-                executablePath: await chromiumLambda.executablePath(),
+                executablePath: executablePath,
                 headless: chromiumLambda.headless,
             });
         } catch (err) {
-            console.error('[Browser] Sparticuz Launch Failed:', err.message);
-            throw err;
+            console.error('[Browser] Cloud Launch Failed:', err.message);
+            throw new Error(`Cloud Browser Launch Failed: ${err.message}`);
         }
     }
 
-    console.log('[Browser] Launching local chromium fallback...');
+    console.log('[Browser] Launching local fallback...');
     try {
         return await chromium.launch({ headless: true });
     } catch (err) {
         console.error('[Browser] Local Launch Failed:', err.message);
-        throw err;
+        throw new Error(`Local Browser Launch Failed: ${err.message}. Make sure playwright browsers are installed.`);
     }
 }
 
@@ -89,7 +96,7 @@ async function scrapeEbay(query, location = 'US') {
         return { results: items.slice(0, 10), url };
     } catch (error) {
         console.error('[eBay] Error:', error.message);
-        throw error; // Let wrapScraper handle it
+        throw error;
     } finally { if (browser) await browser.close(); }
 }
 
@@ -138,7 +145,7 @@ async function scrapeCex(query, location = 'US') {
         browser = await getBrowser();
         const page = await browser.newPage();
         await page.goto(url, { waitUntil: 'networkidle' });
-        try { await page.waitForSelector('.cx-card-product', { timeout: 5000 }); } catch (e) { }
+        try { await page.waitForSelector('.cx-card-product', { timeout: 8000 }); } catch (e) { }
         const items = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('.cx-card-product')).map(card => {
                 const title = card.querySelector('.line-clamp')?.innerText;
@@ -313,22 +320,32 @@ app.get('/api/compare', async (req, res) => {
     const { query, location = 'US' } = req.query;
     if (!query) return res.status(400).json({ error: 'Query parameter is required' });
 
-    console.log(`[Netlify] Start comparison: "${query}" in ${location}`);
+    console.log(`[Netlify] Comparison requested: "${query}" in ${location}`);
 
     try {
         const startTime = Date.now();
         const wrapScraper = async (name, scraperFn, ...args) => {
             const sStart = Date.now();
             try {
+                if (typeof scraperFn !== 'function') throw new Error('Scraper function is not defined');
                 const result = await scraperFn(...args);
-                return { name, status: 'success', count: result.results.length, data: result };
+                return { name, status: 'success', count: (result.results || []).length, data: result };
             } catch (err) {
                 console.error(`[Netlify] ${name} error:`, err.message);
-                // Return URL for debug even on error
                 const domain = location.toUpperCase() === 'UK' ? 'ebay.co.uk' : 'ebay.com';
                 let fallbackUrl = '';
                 if (name === 'eBay') fallbackUrl = `https://www.${domain}/sch/i.html?_nkw=${encodeURIComponent(query)}`;
-                return { name, status: 'error', error: err.message, count: 0, data: { results: [], url: fallbackUrl } };
+                else if (name === 'Facebook') fallbackUrl = `https://www.facebook.com/marketplace/search/?query=${encodeURIComponent(query)}`;
+                else if (name === 'CeX') fallbackUrl = `https://uk.webuy.com/search?stext=${encodeURIComponent(query)}`;
+                else if (name === 'Gumtree') fallbackUrl = `https://www.gumtree.com/search?q=${encodeURIComponent(query)}`;
+
+                return {
+                    name,
+                    status: 'error',
+                    error: err.message,
+                    count: 0,
+                    data: { results: [], url: fallbackUrl }
+                };
             }
         };
 
@@ -348,7 +365,7 @@ app.get('/api/compare', async (req, res) => {
 
         const cexSellData = getResult('CeXSell');
         let cexCashPriceLow = 0, cexCashPriceHigh = 0;
-        if (cexSellData.results.length > 0) {
+        if (cexSellData.results && cexSellData.results.length > 0) {
             const prices = cexSellData.results.map(i => i.cashPrice).filter(p => !isNaN(p));
             if (prices.length > 0) {
                 cexCashPriceLow = Math.min(...prices);
@@ -361,7 +378,7 @@ app.get('/api/compare', async (req, res) => {
             debug: {
                 totalTime: Date.now() - startTime,
                 scraperStatus: scraperResults.map(r => ({ name: r.name, status: r.status, error: r.error, count: r.count })),
-                isServerless: !!(process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || chromiumLambda)
+                lambdaLoaded: !!chromiumLambda
             },
             results: combinedResults,
             ebayUrl: getResult('eBay').url,
@@ -377,7 +394,7 @@ app.get('/api/compare', async (req, res) => {
         });
     } catch (error) {
         console.error('[Netlify] Fatal error:', error);
-        res.status(500).json({ error: 'Failed' });
+        res.status(500).json({ error: 'Internal error' });
     }
 });
 
