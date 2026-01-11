@@ -56,13 +56,13 @@ async function scrapeEbay(query, location = 'US') {
     try {
         browser = await getBrowser();
         const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
             viewport: { width: 1280, height: 800 },
             locale: location.toUpperCase() === 'UK' ? 'en-GB' : 'en-US'
         });
         const page = await context.newPage();
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        try { await page.waitForSelector('.s-item__wrapper', { timeout: 8000 }); } catch (e) { }
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        try { await page.waitForSelector('.s-item__wrapper', { timeout: 5000 }); } catch (e) { }
 
         const items = await page.evaluate((currency) => {
             const results = [];
@@ -343,15 +343,17 @@ app.get('/api/compare', async (req, res) => {
             }
         };
 
+        // For Netlify's constraints, only run the fastest/most reliable scrapers
         const scraperResults = await Promise.all([
             wrapScraper('eBay', scrapeEbay, query, location),
-            wrapScraper('Facebook', scrapeFacebook, query, location),
-            wrapScraper('CeX', scrapeCex, query, location),
-            wrapScraper('Gumtree', scrapeGumtree, query, location),
-            wrapScraper('BackMarket', scrapeBackMarket, query, location),
-            wrapScraper('MusicMagpie', scrapeMusicMagpie, query, location),
-            wrapScraper('CashConverters', scrapeCashConverters, query, location),
-            location === 'UK' ? wrapScraper('CeXSell', scrapeCexSell, query) : Promise.resolve({ name: 'CeXSell', status: 'skipped', data: { results: [], url: '' } })
+            location === 'UK' ? wrapScraper('CeX', scrapeCex, query, location) : Promise.resolve({ name: 'CeX', status: 'skipped', data: { results: [], url: '' } }),
+            location === 'UK' ? wrapScraper('CeXSell', scrapeCexSell, query) : Promise.resolve({ name: 'CeXSell', status: 'skipped', data: { results: [], url: '' } }),
+            // Skip slower scrapers to stay within Netlify's 26s timeout
+            Promise.resolve({ name: 'Facebook', status: 'skipped', data: { results: [], url: '' } }),
+            Promise.resolve({ name: 'Gumtree', status: 'skipped', data: { results: [], url: '' } }),
+            Promise.resolve({ name: 'BackMarket', status: 'skipped', data: { results: [], url: '' } }),
+            Promise.resolve({ name: 'MusicMagpie', status: 'skipped', data: { results: [], url: '' } }),
+            Promise.resolve({ name: 'CashConverters', status: 'skipped', data: { results: [], url: '' } })
         ]);
 
         const combinedResults = scraperResults.flatMap(r => r.data.results || []).sort((a, b) => a.price - b.price);
