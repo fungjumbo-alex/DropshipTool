@@ -18,19 +18,41 @@ app.get('/api/compare', async (req, res) => {
     console.log(`[Netlify] Searching for: ${query} in ${location}`);
 
     try {
-        // Run all scrapers in parallel
-        // NOTE: Netlify functions have a timeout (usually 10s-26s). 
-        // 8 scrapers in parallel might exceed this if they are slow.
-        const [ebayData, facebookData, cexData, gumtreeData, backmarketData, musicmagpieData, cashconvertersData, cexSellData] = await Promise.all([
-            scrapeEbay(query, location),
-            scrapeFacebook(query, location),
-            scrapeCex(query, location),
-            scrapeGumtree(query, location),
-            scrapeBackMarket(query, location),
-            scrapeMusicMagpie(query, location),
-            scrapeCashConverters(query, location),
-            location === 'UK' ? scrapeCexSell(query) : Promise.resolve({ results: [], url: '' })
+        const startTime = Date.now();
+
+        // Wrap each scraper to catch individual timeouts/errors
+        const wrapScraper = async (name, scraperFn, ...args) => {
+            const sStart = Date.now();
+            try {
+                console.log(`[Netlify] Starting ${name}...`);
+                const result = await scraperFn(...args);
+                console.log(`[Netlify] Finished ${name} in ${Date.now() - sStart}ms. Found ${result.results.length} items.`);
+                return { name, status: 'success', data: result };
+            } catch (err) {
+                console.error(`[Netlify] ${name} Failed after ${Date.now() - sStart}ms:`, err.message);
+                return { name, status: 'error', error: err.message, data: { results: [], url: '' } };
+            }
+        };
+
+        const results = await Promise.all([
+            wrapScraper('eBay', scrapeEbay, query, location),
+            wrapScraper('Facebook', scrapeFacebook, query, location),
+            wrapScraper('CeX', scrapeCex, query, location),
+            wrapScraper('Gumtree', scrapeGumtree, query, location),
+            wrapScraper('BackMarket', scrapeBackMarket, query, location),
+            wrapScraper('MusicMagpie', scrapeMusicMagpie, query, location),
+            wrapScraper('CashConverters', scrapeCashConverters, query, location),
+            location === 'UK' ? wrapScraper('CeXSell', scrapeCexSell, query) : Promise.resolve({ name: 'CeXSell', status: 'skipped', data: { results: [], url: '' } })
         ]);
+
+        const ebayData = results.find(r => r.name === 'eBay').data;
+        const facebookData = results.find(r => r.name === 'Facebook').data;
+        const cexData = results.find(r => r.name === 'CeX').data;
+        const gumtreeData = results.find(r => r.name === 'Gumtree').data;
+        const backmarketData = results.find(r => r.name === 'BackMarket').data;
+        const musicmagpieData = results.find(r => r.name === 'MusicMagpie').data;
+        const cashconvertersData = results.find(r => r.name === 'CashConverters').data;
+        const cexSellData = results.find(r => r.name === 'CeXSell').data;
 
         const combinedResults = [
             ...ebayData.results,
@@ -53,9 +75,16 @@ app.get('/api/compare', async (req, res) => {
             }
         }
 
+        const totalTime = Date.now() - startTime;
+        console.log(`[Netlify] All scrapers completed in ${totalTime}ms`);
+
         res.json({
             query,
             timestamp: new Date().toISOString(),
+            debug: {
+                totalTime,
+                scraperStatus: results.map(r => ({ name: r.name, status: r.status, error: r.error, count: r.data.results.length }))
+            },
             ebayUrl: ebayData.url,
             facebookUrl: facebookData.url,
             cexUrl: cexData.url,

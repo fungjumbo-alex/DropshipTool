@@ -12,7 +12,7 @@ async function getBrowser() {
     // If we're on Netlify/Lambda, use sparticuz chromium
     if (process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || process.env.FUNCTION_NAME) {
         return await chromium.launch({
-            args: chromiumLambda.args,
+            args: [...chromiumLambda.args, '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
             executablePath: await chromiumLambda.executablePath(),
             headless: chromiumLambda.headless,
         });
