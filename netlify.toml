@@ -10,3 +10,4 @@
 
 [functions.api]
   timeout = 26
+  external_node_modules = ["@sparticuz/chromium-min"]
