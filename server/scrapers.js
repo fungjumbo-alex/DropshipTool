@@ -17,15 +17,8 @@ async function getBrowser() {
             headless: chromiumLambda.headless,
         });
     }
-    // Locally, use the normal chromium from playwright
-    // We try to require standard playwright chromium here if available
-    try {
-        const { chromium: localChromium } = require('playwright');
-        return await localChromium.launch({ headless: true });
-    } catch (e) {
-        // Fallback to playwright-core if possible
-        return await chromium.launch({ headless: true });
-    }
+    // Locally, use playwright-core
+    return await chromium.launch({ headless: true });
 }
 
 async function scrapeEbay(query, location = 'US') {
