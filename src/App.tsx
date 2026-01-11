@@ -238,7 +238,24 @@ function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        {/* Dashboard Status Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {/* ... existing cards ... */}
+        </div>
 
+        {/* Error Display for Production Debugging */}
+        {!isLoading && results.length === 0 && lastQuery && (
+          <div className="mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl">
+            <h3 className="text-red-400 font-bold mb-2">Search Status (Debug)</h3>
+            <ul className="space-y-2">
+              <li className="text-xs text-white/60">Search finished in too little time? Possible browser launch failure.</li>
+              {/* We'll check the first few scrapers for errors */}
+              {/* Note: In a real app we'd map these properly, but for debugging we'll just show the first error found */}
+            </ul>
+          </div>
+        )}
+
+        {/* Results Title */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <AnimatePresence>
             {filteredResults.map((product, index) => (
