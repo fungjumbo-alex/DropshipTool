@@ -28,7 +28,7 @@ async function getBrowser() {
             return await chromium.launch({
                 args: [...(chromiumLambda.args || []), '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
                 executablePath: executablePath,
-                headless: chromiumLambda.headless,
+                headless: true,
             });
         } catch (err) {
             console.error('[Browser] Cloud Launch Failed:', err.message);
