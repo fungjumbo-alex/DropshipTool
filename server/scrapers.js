@@ -1,6 +1,32 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { chromium } = require('playwright');
+const { chromium } = require('playwright-core');
+let chromiumLambda;
+try {
+    chromiumLambda = require('@sparticuz/chromium-min');
+} catch (e) {
+    // Falls back to local playwright if sparticuz is missing
+}
+
+async function getBrowser() {
+    // If we're on Netlify/Lambda, use sparticuz chromium
+    if (process.env.NETLIFY || process.env.AWS_EXECUTION_ENV || process.env.FUNCTION_NAME) {
+        return await chromium.launch({
+            args: chromiumLambda.args,
+            executablePath: await chromiumLambda.executablePath(),
+            headless: chromiumLambda.headless,
+        });
+    }
+    // Locally, use the normal chromium from playwright
+    // We try to require standard playwright chromium here if available
+    try {
+        const { chromium: localChromium } = require('playwright');
+        return await localChromium.launch({ headless: true });
+    } catch (e) {
+        // Fallback to playwright-core if possible
+        return await chromium.launch({ headless: true });
+    }
+}
 
 async function scrapeEbay(query, location = 'US') {
     let browser;
@@ -11,7 +37,7 @@ async function scrapeEbay(query, location = 'US') {
 
         console.log(`eBay Search URL (${location}): ${url}`);
 
-        browser = await chromium.launch({ headless: true });
+        browser = await getBrowser();
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             viewport: { width: 1280, height: 800 },
@@ -114,7 +140,7 @@ async function scrapeFacebook(query, location = 'US') {
     let browser;
     try {
         const currencyCode = location.toUpperCase() === 'UK' ? 'GBP' : 'USD';
-        browser = await chromium.launch({ headless: true });
+        browser = await getBrowser();
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
         });
@@ -190,7 +216,7 @@ async function scrapeCex(query, location = 'US') {
     const url = `https://uk.webuy.com/search?stext=${encodeURIComponent(query)}`;
 
     try {
-        browser = await chromium.launch({ headless: true });
+        browser = await getBrowser();
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
         });
@@ -253,7 +279,7 @@ async function scrapeGumtree(query, location = 'US') {
     const url = `https://www.gumtree.com/search?search_category=all&q=${encodeURIComponent(query)}`;
 
     try {
-        browser = await chromium.launch({ headless: true });
+        browser = await getBrowser();
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
         });
@@ -320,7 +346,7 @@ async function scrapeBackMarket(query, location = 'US') {
     try {
         console.log(`Starting BackMarket Parse: ${url}`);
 
-        browser = await chromium.launch({ headless: true });
+        browser = await getBrowser();
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             viewport: { width: 1366, height: 768 },
@@ -422,7 +448,7 @@ async function scrapeMusicMagpie(query, location = 'US') {
 
     try {
         console.log(`MusicMagpie Search URL: ${url}`);
-        browser = await chromium.launch({ headless: true });
+        browser = await getBrowser();
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             viewport: { width: 1280, height: 800 },
@@ -499,7 +525,7 @@ async function scrapeCashConverters(query, location = 'US') {
 
     try {
         console.log(`CashConverters Search URL: ${url}`);
-        browser = await chromium.launch({ headless: true });
+        browser = await getBrowser();
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             viewport: { width: 1280, height: 800 },
@@ -571,7 +597,7 @@ async function scrapeCexSell(query) {
 
     try {
         console.log(`CeX Sell Search URL: ${url}`);
-        browser = await chromium.launch({ headless: true });
+        browser = await getBrowser();
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             viewport: { width: 1280, height: 800 },

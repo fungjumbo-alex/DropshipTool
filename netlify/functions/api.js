@@ -1,9 +1,9 @@
 const express = require('express');
+const serverless = require('serverless-http');
 const cors = require('cors');
-const { scrapeEbay, scrapeFacebook, scrapeCex, scrapeGumtree, scrapeBackMarket, scrapeMusicMagpie, scrapeCashConverters, scrapeCexSell } = require('./scrapers');
+const { scrapeEbay, scrapeFacebook, scrapeCex, scrapeGumtree, scrapeBackMarket, scrapeMusicMagpie, scrapeCashConverters, scrapeCexSell } = require('../../server/scrapers');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
@@ -15,10 +15,12 @@ app.get('/api/compare', async (req, res) => {
         return res.status(400).json({ error: 'Query parameter is required' });
     }
 
-    console.log(`Searching for: ${query} in ${location}`);
+    console.log(`[Netlify] Searching for: ${query} in ${location}`);
 
     try {
         // Run all scrapers in parallel
+        // NOTE: Netlify functions have a timeout (usually 10s-26s). 
+        // 8 scrapers in parallel might exceed this if they are slow.
         const [ebayData, facebookData, cexData, gumtreeData, backmarketData, musicmagpieData, cashconvertersData, cexSellData] = await Promise.all([
             scrapeEbay(query, location),
             scrapeFacebook(query, location),
@@ -72,16 +74,4 @@ app.get('/api/compare', async (req, res) => {
     }
 });
 
-const functions = require('firebase-functions');
-
-// Only start the server locally if not in a Firebase environment
-if (!process.env.FUNCTION_NAME && !process.env.K_SERVICE) {
-    app.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-    });
-}
-
-exports.api = functions.https.onRequest({
-    memory: "2GiB", // Playwright needs more memory
-    timeoutSeconds: 300
-}, app);
+module.exports.handler = serverless(app);

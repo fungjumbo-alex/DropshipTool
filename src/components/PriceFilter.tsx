@@ -1,5 +1,4 @@
 import React from 'react';
-import { SlidersHorizontal } from 'lucide-react';
 
 interface PriceFilterProps {
     minPrice: number;

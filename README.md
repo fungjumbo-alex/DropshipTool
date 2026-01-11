@@ -1,73 +1,36 @@
-# React + TypeScript + Vite
+# DropshipComparator 🛒
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A sophisticated real-time price comparison and arbitrage tool for second-hand electronics!
 
-Currently, two official plugins are available:
+## 🚀 Features
+- **Multi-Source Scraping**: eBay, Facebook Marketplace, CeX, Gumtree, BackMarket, MusicMagpie, and CashConverters.
+- **UK Market Optimized**: Pre-configured for UK retailers with currency support.
+- **Arbitrage Highlighting**: Automatically flags items cheaper than the lowest CeX trade-in price.
+- **Profit Potential Dashboard**: Real-time stats on best price vs. average market value.
+- **CeX Price Reference**: Shows the range of cash prices CeX will pay for items.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🛠️ Tech Stack
+- **Frontend**: React + TypeScript + Vite + TailwindCSS + Framer Motion.
+- **Backend**: Node.js + Express + Playwright for stealth scraping.
+- **Deployment**: Configured for Firebase (Functions) and Netlify (Functions).
 
-## React Compiler
+## 🌍 Deployment
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### **Netlify (GitHub Auto-Deploy)**
+This project is pre-configured with `netlify.toml` and Netlify Functions.
+1. Connect your GitHub repo to Netlify.
+2. The build command is `npm run build`.
+3. The publish directory is `dist`.
+4. The functions directory is `netlify/functions`.
+5. **Note**: Netlify Functions have a default 10s timeout. If scraping takes too long, you may need to upgrade to Pro for longer timeouts or use a dedicated server.
 
-## Expanding the ESLint configuration
+### **Firebase**
+1. Ensure you are on the **Blaze (Pay-As-You-Go) Plan** (required for Functions and browser builds).
+2. Install Firebase CLI: `npm install -g firebase-tools`.
+3. Run `firebase login`.
+4. Run `firebase deploy`.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 💻 Local Development
+1. Clone the repo.
+2. Run `npm install` in the root and `server/` directories.
+3. Run `npm run dev:all` to start both the Vite frontend and Express backend.
