@@ -132,10 +132,9 @@ async function scrapeEbay(query, location = 'US') {
 
     } catch (error) {
         console.error('eBay Scrape Error:', error.message);
-        // If it's a browser error, we want the main handler to know
-        if (error.message.includes('launch') || error.message.includes('executable') || error.message.includes('defined')) {
-            throw error;
-        }
+        // On Netlify, we always want to see the real error in debug info
+        if (process.env.NETLIFY || process.env.AWS_EXECUTION_ENV) throw error;
+
         const domain = location.toUpperCase() === 'UK' ? 'ebay.co.uk' : 'ebay.com';
         return { results: [], url: `https://www.${domain}/sch/i.html?_nkw=${encodeURIComponent(query)}` };
     } finally {
@@ -207,9 +206,7 @@ async function scrapeFacebook(query, location = 'US') {
         return { results: items, url };
     } catch (error) {
         console.error('Facebook Scrape Error:', error.message);
-        if (error.message.includes('launch') || error.message.includes('executable') || error.message.includes('defined')) {
-            throw error;
-        }
+        if (process.env.NETLIFY || process.env.AWS_EXECUTION_ENV) throw error;
         const city = location.toUpperCase() === 'UK' ? 'london' : 'nyc';
         return { results: [], url: `https://www.facebook.com/marketplace/${city}/search/?query=${encodeURIComponent(query)}` };
     } finally {
@@ -274,9 +271,7 @@ async function scrapeCex(query, location = 'US') {
         return { results: items.slice(0, 10), url };
     } catch (error) {
         console.error('CeX Scrape Error:', error.message);
-        if (error.message.includes('launch') || error.message.includes('executable') || error.message.includes('defined')) {
-            throw error;
-        }
+        if (process.env.NETLIFY || process.env.AWS_EXECUTION_ENV) throw error;
         return { results: [], url };
     } finally {
         if (browser) await browser.close();
@@ -341,9 +336,7 @@ async function scrapeGumtree(query, location = 'US') {
         return { results: items.slice(0, 10), url };
     } catch (error) {
         console.error('Gumtree Scrape Error:', error.message);
-        if (error.message.includes('launch') || error.message.includes('executable') || error.message.includes('defined')) {
-            throw error;
-        }
+        if (process.env.NETLIFY || process.env.AWS_EXECUTION_ENV) throw error;
         return { results: [], url };
     } finally {
         if (browser) await browser.close();
@@ -448,9 +441,7 @@ async function scrapeBackMarket(query, location = 'US') {
 
     } catch (error) {
         console.error('BackMarket Scrape Error:', error.message);
-        if (error.message.includes('launch') || error.message.includes('executable') || error.message.includes('defined')) {
-            throw error;
-        }
+        if (process.env.NETLIFY || process.env.AWS_EXECUTION_ENV) throw error;
         return { results: [], url };
     } finally {
         if (browser) await browser.close();
@@ -528,9 +519,7 @@ async function scrapeMusicMagpie(query, location = 'US') {
         return { results: unique.slice(0, 10), url };
     } catch (error) {
         console.error('MusicMagpie Scrape Error:', error.message);
-        if (error.message.includes('launch') || error.message.includes('executable') || error.message.includes('defined')) {
-            throw error;
-        }
+        if (process.env.NETLIFY || process.env.AWS_EXECUTION_ENV) throw error;
         return { results: [], url };
     } finally {
         if (browser) await browser.close();
@@ -606,9 +595,7 @@ async function scrapeCashConverters(query, location = 'US') {
         return { results: unique.slice(0, 10), url };
     } catch (error) {
         console.error('CashConverters Scrape Error:', error.message);
-        if (error.message.includes('launch') || error.message.includes('executable') || error.message.includes('defined')) {
-            throw error;
-        }
+        if (process.env.NETLIFY || process.env.AWS_EXECUTION_ENV) throw error;
         return { results: [], url };
     } finally {
         if (browser) await browser.close();
@@ -682,9 +669,7 @@ async function scrapeCexSell(query) {
 
     } catch (error) {
         console.error('CeX Sell Scrape Error:', error.message);
-        if (error.message.includes('launch') || error.message.includes('executable') || error.message.includes('defined')) {
-            throw error;
-        }
+        if (process.env.NETLIFY || process.env.AWS_EXECUTION_ENV) throw error;
         return { results: [], url };
     } finally {
         if (browser) await browser.close();

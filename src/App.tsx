@@ -19,6 +19,7 @@ function App() {
   const [cexSellHigh, setCexSellHigh] = useState<number>(0);
   const [strictMatch, setStrictMatch] = useState(false);
   const [lastQuery, setLastQuery] = useState('');
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   const handleSearch = async (query: string, location: string) => {
     setIsLoading(true);
@@ -28,6 +29,7 @@ function App() {
       const response = await axios.get(`/api/compare?query=${encodeURIComponent(query)}&location=${location}`);
       console.log('Search Results:', response.data.results);
       if (response.data.debug) {
+        setDebugInfo(response.data.debug);
         console.log('Backend Debug Info:', response.data.debug);
       }
       console.log('eBay Search URL:', response.data.ebayUrl);
@@ -238,20 +240,27 @@ function App() {
             </motion.div>
           )}
         </AnimatePresence>
-        {/* Dashboard Status Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {/* ... existing cards ... */}
-        </div>
-
         {/* Error Display for Production Debugging */}
-        {!isLoading && results.length === 0 && lastQuery && (
-          <div className="mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl">
-            <h3 className="text-red-400 font-bold mb-2">Search Status (Debug)</h3>
-            <ul className="space-y-2">
-              <li className="text-xs text-white/60">Search finished in too little time? Possible browser launch failure.</li>
-              {/* We'll check the first few scrapers for errors */}
-              {/* Note: In a real app we'd map these properly, but for debugging we'll just show the first error found */}
-            </ul>
+        {!isLoading && lastQuery && (
+          <div className="mb-8 p-4 bg-white/5 border border-white/10 rounded-2xl">
+            <h3 className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-3">Backend Scraper Status</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {debugInfo?.scraperStatus?.map((s: any) => (
+                <div key={s.name} className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
+                  <span className="text-[10px] font-bold text-white/60">{s.name}</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${s.status === 'success' ? (s.count > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400') : 'bg-red-500/20 text-red-400'
+                    }`}>
+                    {s.status === 'success' ? (s.count > 0 ? `${s.count} items` : '0 items') : 'Error'}
+                  </span>
+                  {s.error && <p className="text-[8px] text-red-500 mt-1 absolute bottom-[-15px] left-0 truncate w-full">{s.error}</p>}
+                </div>
+              ))}
+            </div>
+            {results.length === 0 && (
+              <p className="text-[10px] text-white/40 mt-4 text-center italic">
+                No results found. If all status above show "0 items", the scrapers might be blocked or failing to find matches.
+              </p>
+            )}
           </div>
         )}
 
