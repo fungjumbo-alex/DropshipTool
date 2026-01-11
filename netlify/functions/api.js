@@ -16,6 +16,16 @@ app.get('/api/compare', async (req, res) => {
     }
 
     console.log(`[Netlify] Searching for: ${query} in ${location}`);
+    console.log('[Netlify] Functions available:', {
+        scrapeEbay: typeof scrapeEbay,
+        scrapeFacebook: typeof scrapeFacebook,
+        scrapeCex: typeof scrapeCex,
+        scrapeGumtree: typeof scrapeGumtree,
+        scrapeBackMarket: typeof scrapeBackMarket,
+        scrapeMusicMagpie: typeof scrapeMusicMagpie,
+        scrapeCashConverters: typeof scrapeCashConverters,
+        scrapeCexSell: typeof scrapeCexSell
+    });
 
     try {
         const startTime = Date.now();
@@ -25,6 +35,9 @@ app.get('/api/compare', async (req, res) => {
             const sStart = Date.now();
             try {
                 console.log(`[Netlify] Starting ${name}...`);
+                if (typeof scraperFn !== 'function') {
+                    throw new Error(`Scraper function for ${name} is not defined (type: ${typeof scraperFn})`);
+                }
                 const result = await scraperFn(...args);
                 console.log(`[Netlify] Finished ${name} in ${Date.now() - sStart}ms. Found ${result.results.length} items.`);
                 return { name, status: 'success', count: result.results.length, data: result };
