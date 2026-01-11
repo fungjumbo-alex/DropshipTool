@@ -677,3 +677,4 @@ async function scrapeCexSell(query) {
 }
 
 module.exports = { scrapeEbay, scrapeFacebook, scrapeCex, scrapeGumtree, scrapeBackMarket, scrapeMusicMagpie, scrapeCashConverters, scrapeCexSell };
+console.log('[Netlify] Scrapers module initialization complete');
