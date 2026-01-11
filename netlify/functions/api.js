@@ -2,12 +2,14 @@ const express = require('express');
 const serverless = require('serverless-http');
 const cors = require('cors');
 let scrapers = {};
+let importError = null;
 try {
     console.log('[Netlify] Requiring scrapers.js...');
     scrapers = require('./scrapers');
     console.log('[Netlify] Scrapers loaded keys:', Object.keys(scrapers));
 } catch (e) {
-    console.error('[Netlify] CRITICAL: Failed to require scrapers.js:', e.message);
+    importError = e.message || String(e);
+    console.error('[Netlify] CRITICAL: Failed to require scrapers.js:', importError);
 }
 
 const { scrapeEbay, scrapeFacebook, scrapeCex, scrapeGumtree, scrapeBackMarket, scrapeMusicMagpie, scrapeCashConverters, scrapeCexSell } = scrapers;
@@ -113,6 +115,7 @@ app.get('/api/compare', async (req, res) => {
             timestamp: new Date().toISOString(),
             debug: {
                 totalTime,
+                importError,
                 types: {
                     scrapeEbay: typeof scrapeEbay,
                     scrapeFacebook: typeof scrapeFacebook,
