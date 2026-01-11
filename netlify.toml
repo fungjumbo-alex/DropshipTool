@@ -9,7 +9,9 @@
   status = 200
 
 [functions]
-  timeout = 26
   node_bundler = "esbuild"
   external_node_modules = ["@sparticuz/chromium-min", "playwright-core"]
   included_files = ["node_modules/@sparticuz/chromium-min/bin/**"]
+
+[functions.api]
+  timeout = 26
