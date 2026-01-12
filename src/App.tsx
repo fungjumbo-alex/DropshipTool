@@ -23,11 +23,12 @@ function App() {
   const [popularSuggestions, setPopularSuggestions] = useState<string[]>([]);
   const [isPopularLoading, setIsPopularLoading] = useState(false);
   const [discoveryKeyword, setDiscoveryKeyword] = useState('apple');
+  const [location, setLocation] = useState('UK');
 
-  const fetchPopular = async (query: string = 'apple', location: string = 'UK') => {
+  const fetchPopular = async (query: string = 'apple', currentLoc: string = location) => {
     setIsPopularLoading(true);
     try {
-      const response = await axios.get(`/api/popular?query=${encodeURIComponent(query)}&location=${location}&count=50`);
+      const response = await axios.get(`/api/popular?query=${encodeURIComponent(query)}&location=${currentLoc}&count=50`);
       setPopularSuggestions(response.data.products || []);
     } catch (err) {
       console.error('Failed to fetch popular items:', err);
@@ -212,7 +213,7 @@ function App() {
                 className="bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs font-medium focus:outline-none focus:border-brand-primary/50 transition-colors w-40"
               />
               <button
-                onClick={() => fetchPopular(discoveryKeyword, currency === 'GBP' ? 'UK' : 'US')}
+                onClick={() => fetchPopular(discoveryKeyword, location)}
                 className="text-xs font-bold uppercase tracking-wider bg-brand-primary/10 text-brand-primary px-4 py-2 rounded-xl hover:bg-brand-primary hover:text-white transition-all flex items-center gap-2"
                 disabled={isPopularLoading}
               >
@@ -230,7 +231,7 @@ function App() {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: i * 0.05 }}
-                  onClick={() => handleSearch(term, currency === 'GBP' ? 'UK' : 'US')}
+                  onClick={() => handleSearch(term, location)}
                   className="px-4 py-2 glass rounded-2xl text-sm font-medium hover:bg-brand-primary/20 hover:border-brand-primary/50 transition-all border border-white/5"
                 >
                   {term}
@@ -238,7 +239,7 @@ function App() {
               ))
             ) : (
               <div className="w-full p-8 border-2 border-dashed border-white/5 rounded-3xl text-center">
-                <p className="text-white/20 text-sm">Click "Refresh Trending" to discover popular products for arbitrage.</p>
+                <p className="text-white/20 text-sm">Click "Explore" to discover popular products for arbitrage ({location}).</p>
               </div>
             )}
           </div>
@@ -247,7 +248,7 @@ function App() {
         {/* Search & Filter */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-12">
           <div className="lg:col-span-3">
-            <SearchBar onSearch={handleSearch} isLoading={isLoading} />
+            <SearchBar onSearch={handleSearch} isLoading={isLoading} location={location} setLocation={setLocation} />
           </div>
           <div className="lg:col-span-1">
             <PriceFilter
