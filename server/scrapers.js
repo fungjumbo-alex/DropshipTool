@@ -869,11 +869,14 @@ async function scrapePopularProducts(query, location = 'UK', count = 50) {
         const products = await page.evaluate((maxCount) => {
             const cards = Array.from(document.querySelectorAll('li.s-card, .s-card, .s-item, .s-item__wrapper, li[data-view]'));
             const results = [];
+            const seenTitles = new Set();
 
             for (const item of cards) {
                 if (results.length >= maxCount) break;
 
                 const titleEl = item.querySelector('.s-card__title, .s-item__title');
+                const imgEl = item.querySelector('img');
+
                 if (titleEl) {
                     let fullTitle = titleEl.innerText || '';
                     if (fullTitle.toLowerCase().includes('case') ||
@@ -893,8 +896,12 @@ async function scrapePopularProducts(query, location = 'UK', count = 50) {
                     const words = cleanTitle.split(' ').filter(w => w.length > 1);
                     const shortened = words.slice(0, 4).join(' ');
 
-                    if (shortened.length > 5 && !results.includes(shortened)) {
-                        results.push(shortened);
+                    if (shortened.length > 5 && !seenTitles.has(shortened)) {
+                        seenTitles.add(shortened);
+                        results.push({
+                            title: shortened,
+                            image: imgEl ? (imgEl.src || imgEl.getAttribute('data-src')) : null
+                        });
                     }
                 }
             }
