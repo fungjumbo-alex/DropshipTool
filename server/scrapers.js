@@ -875,7 +875,8 @@ async function scrapePopularProducts(query, location = 'UK', count = 50) {
                 if (results.length >= maxCount) break;
 
                 const titleEl = item.querySelector('.s-card__title, .s-item__title');
-                const imgEl = item.querySelector('img');
+                // Use the exact same image logic as scrapeEbay
+                const imgEl = item.querySelector('.s-card__image img, .s-item__image-img, img');
 
                 if (titleEl) {
                     let fullTitle = titleEl.innerText || '';
@@ -898,9 +899,15 @@ async function scrapePopularProducts(query, location = 'UK', count = 50) {
 
                     if (shortened.length > 5 && !seenTitles.has(shortened)) {
                         seenTitles.add(shortened);
+
+                        let imgSrc = null;
+                        if (imgEl) {
+                            imgSrc = imgEl.src || imgEl.getAttribute('data-src') || imgEl.getAttribute('src');
+                        }
+
                         results.push({
                             title: shortened,
-                            image: imgEl ? (imgEl.src || imgEl.getAttribute('data-src')) : null
+                            image: imgSrc
                         });
                     }
                 }
