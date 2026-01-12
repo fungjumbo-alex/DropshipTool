@@ -126,30 +126,28 @@ function App() {
   const getFilteredResults = () => {
     if (results.length === 0) return [];
 
-    // 1. Keyword-based Cleanup (Softened)
-    const accessoryKeywords = ['case', 'cover', 'protector', 'screen glass', 'parts', 'repair', 'manual'];
+    // 1. Keyword-based Cleanup (Restored to Strict)
+    const accessoryKeywords = ['case', 'cover', 'protector', 'glass', 'box only', 'parts', 'broken', 'repair', 'manual', 'cable'];
     let filtered = results.filter(product => {
       const title = product.title.toLowerCase();
 
-      // Only filter out accessories if they AREN'T part of the query
-      // (e.g. if I search for "iPhone Case", don't filter out cases)
-      const queryLower = lastQuery.toLowerCase();
-      if (accessoryKeywords.some(keyword => title.includes(keyword) && !queryLower.includes(keyword))) {
+      // Restore strict accessory filtering
+      if (accessoryKeywords.some(keyword => title.includes(keyword))) {
         return false;
       }
 
-      // 2. Strict Match Logic (Optional)
+      // 2. Strict Match Logic (Restored to "All Keywords Must Match")
       if (strictMatch && lastQuery) {
-        const keywords = queryLower.split(' ').filter(word => word.trim().length > 1);
-        const hasSomeKeywords = keywords.some(kw => title.includes(kw));
-        if (!hasSomeKeywords) return false;
+        const keywords = lastQuery.toLowerCase().split(' ').filter(word => word.trim().length > 0);
+        const hasAllKeywords = keywords.every(kw => title.includes(kw));
+        if (!hasAllKeywords) return false;
       }
 
       return true;
     });
 
-    // If we filtered out too much, show the raw results
-    const dataToUse = (filtered.length === 0) ? results : filtered;
+    const dataToUse = filtered.length > 0 ? filtered : results;
+    if (dataToUse.length === 0) return [];
 
     // 3. Application of Absolute Price Filter & Sorting
     return dataToUse
