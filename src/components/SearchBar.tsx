@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Search, Loader2, TrendingUp } from 'lucide-react';
 
 interface SearchBarProps {
@@ -6,11 +6,11 @@ interface SearchBarProps {
   isLoading: boolean;
   location: string;
   setLocation: (location: string) => void;
+  query: string;
+  setQuery: (query: string) => void;
 }
 
-export const SearchBar: React.FC<SearchBarProps> = ({ onSearch, isLoading, location, setLocation }) => {
-  const [query, setQuery] = useState('');
-
+export const SearchBar: React.FC<SearchBarProps> = ({ onSearch, isLoading, location, setLocation, query, setQuery }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim()) {

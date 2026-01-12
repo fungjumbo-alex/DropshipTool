@@ -24,6 +24,7 @@ function App() {
   const [isPopularLoading, setIsPopularLoading] = useState(false);
   const [discoveryKeyword, setDiscoveryKeyword] = useState('apple');
   const [location, setLocation] = useState('UK');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchPopular = async (query: string = 'apple', currentLoc: string = location) => {
     setIsPopularLoading(true);
@@ -41,6 +42,7 @@ function App() {
     setIsLoading(true);
     setError(null);
     setLastQuery(query);
+    setSearchQuery(query); // Sync search box with the active search
     setResults([]); // Clear previous results
     setDebugInfo({ scraperStatus: [] });
 
@@ -147,11 +149,13 @@ function App() {
     const dataToUse = filtered.length > 0 ? filtered : results;
     if (dataToUse.length === 0) return [];
 
-    // 3. Application of Absolute Price Filter
-    return dataToUse.filter(item => {
-      if (isNaN(item.price) || item.price <= 0) return false;
-      return item.price >= minPrice && item.price <= maxPrice;
-    });
+    // 3. Application of Absolute Price Filter & Sorting
+    return dataToUse
+      .filter(item => {
+        if (isNaN(item.price) || item.price <= 0) return false;
+        return item.price >= minPrice && item.price <= maxPrice;
+      })
+      .sort((a, b) => a.price - b.price);
   };
 
   const filteredResults = getFilteredResults();
@@ -254,10 +258,16 @@ function App() {
           </div>
         </div>
 
-        {/* Search & Filter */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-12">
           <div className="lg:col-span-3">
-            <SearchBar onSearch={handleSearch} isLoading={isLoading} location={location} setLocation={setLocation} />
+            <SearchBar
+              onSearch={handleSearch}
+              isLoading={isLoading}
+              location={location}
+              setLocation={setLocation}
+              query={searchQuery}
+              setQuery={setSearchQuery}
+            />
           </div>
           <div className="lg:col-span-1">
             <PriceFilter
@@ -313,7 +323,7 @@ function App() {
                           return acc;
                         }, {} as Record<string, number>)
                       ).map(([source, count], i) => (
-                        <span key={source}>
+                        <span key={`${source}-${i}`}>
                           {i > 0 && ' • '}{source}: {count}
                         </span>
                       ))}
@@ -362,8 +372,8 @@ function App() {
           <div className="mb-8 p-4 bg-white/5 border border-white/10 rounded-2xl">
             <h3 className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-3">Backend Scraper Status</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {debugInfo?.scraperStatus?.map((s: any) => (
-                <div key={s.name} className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
+              {debugInfo?.scraperStatus?.map((s: any, i: number) => (
+                <div key={`${s.name}-${i}`} className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
                   <span className="text-[10px] font-bold text-white/60">{s.name}</span>
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${s.status === 'success' ? (s.count > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400') : 'bg-red-500/20 text-red-400'
                     }`}>
