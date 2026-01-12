@@ -645,75 +645,6 @@ async function scrapeBackMarket(query, location = 'US') {
     }
 }
 
-async function scrapeMusicMagpie(query, location = 'US') {
-    if (location.toUpperCase() !== 'UK') {
-        return { results: [], url: '' };
-    }
-
-    let browser;
-    const url = `https://store.musicmagpie.co.uk/store/search?q=${encodeURIComponent(query)}`;
-
-    try {
-        console.log(`MusicMagpie Search URL: ${url}`);
-        browser = await getBrowser();
-        const page = await createStealthContext(browser, 'UK');
-
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await page.waitForTimeout(2000);
-
-        const items = await page.evaluate(() => {
-            const results = [];
-            // Generic strategy: Find all links with a pound sign in them
-            const allLinks = Array.from(document.querySelectorAll('a'));
-
-            const potentialCards = allLinks.filter(l => {
-                const t = l.innerText;
-                return t.includes('£') && t.length > 10;
-            });
-
-            console.log(`MusicMagpie: Found ${potentialCards.length} generic items`);
-
-            potentialCards.forEach(card => {
-                const text = card.innerText;
-                const priceMatch = text.match(/£\s?(\d{1,3}(,\d{3})*(\.\d{2})?)/);
-
-                if (priceMatch) {
-                    const price = parseFloat(priceMatch[1].replace(/,/g, ''));
-                    // Title usually lacks the £ symbol
-                    const lines = text.split('\n');
-                    const title = lines.find(l => !l.includes('£') && l.length > 5) || lines[0];
-                    const imgEl = card.querySelector('img');
-
-                    if (!isNaN(price) && title) {
-                        results.push({
-                            source: 'MusicMagpie',
-                            title: title.trim(),
-                            price: price,
-                            currency: 'GBP',
-                            link: card.href,
-                            image: imgEl ? imgEl.src : null,
-                            condition: 'Refurbished',
-                            originalPrice: priceMatch[0],
-                            warranty: '12 Month Warranty',
-                            stock: 'In Stock'
-                        });
-                    }
-                }
-            });
-            return results;
-        });
-
-        // Deduplicate
-        const unique = items.filter((v, i, a) => a.findIndex(v2 => (v2.link === v.link)) === i);
-        return { results: unique.slice(0, 10), url };
-    } catch (error) {
-        console.error('MusicMagpie Scrape Error:', error.message);
-        return { results: [], url };
-    } finally {
-        if (browser) await browser.close();
-    }
-}
-
 async function scrapeCashConverters(query, location = 'US') {
     if (location.toUpperCase() !== 'UK') {
         return { results: [], url: '' };
@@ -939,7 +870,6 @@ module.exports = {
     scrapeCex,
     scrapeGumtree,
     scrapeBackMarket,
-    scrapeMusicMagpie,
     scrapeCashConverters,
     scrapeCexSell,
     scrapePopularProducts

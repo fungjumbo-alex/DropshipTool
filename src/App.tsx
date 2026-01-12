@@ -51,7 +51,6 @@ function App() {
       { id: 'facebook', name: 'Facebook' },
       { id: 'cex', name: 'CeX' },
       { id: 'gumtree', name: 'Gumtree' },
-      { id: 'musicmagpie', name: 'MusicMagpie' },
       { id: 'cashconverters', name: 'CashConverters' },
       { id: 'backmarket', name: 'BackMarket' },
       { id: 'cexsell', name: 'CeX Arbitrage' }

@@ -68,7 +68,6 @@ app.get('/api/compare', async (req, res) => {
                 }
             },
             { id: 'backmarket', name: 'BackMarket', fn: () => scrapeBackMarket(query, location) },
-            { id: 'musicmagpie', name: 'MusicMagpie', fn: () => scrapeMusicMagpie(query, location) },
             { id: 'cashconverters', name: 'CashConverters', fn: () => scrapeCashConverters(query, location) },
             { id: 'cexsell', name: 'CeXSell', fn: () => (location === 'UK' ? scrapeCexSell(query) : Promise.resolve({ results: [], url: '' })) }
         ];

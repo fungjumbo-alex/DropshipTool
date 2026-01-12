@@ -2,7 +2,7 @@ import React from 'react';
 import { ExternalLink, Tag, MapPin, Truck, User, Clock, ShieldCheck, Box } from 'lucide-react';
 
 export interface Product {
-    source: 'eBay' | 'Facebook' | 'CeX' | 'Gumtree' | 'BackMarket' | 'MusicMagpie' | 'CashConverters';
+    source: 'eBay' | 'Facebook' | 'CeX' | 'Gumtree' | 'BackMarket' | 'CashConverters';
     title: string;
     price: number;
     currency: string;
@@ -43,8 +43,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, arbitragePote
                     product.source === 'Facebook' ? 'bg-blue-500' :
                         product.source === 'CeX' ? 'bg-red-600' :
                             product.source === 'Gumtree' ? 'bg-green-600' :
-                                product.source === 'BackMarket' ? 'bg-zinc-800' :
-                                    product.source === 'MusicMagpie' ? 'bg-orange-600' : 'bg-yellow-600'
+                                product.source === 'BackMarket' ? 'bg-zinc-800' : 'bg-yellow-600'
                     }`}>
                     {product.source}
                 </div>
