@@ -13,7 +13,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [currency, setCurrency] = useState('USD');
   // currency state is already defined above
-  const [minPrice, setMinPrice] = useState<number>(50);
+  const [minPrice, setMinPrice] = useState<number>(10);
   const [maxPrice, setMaxPrice] = useState<number>(10000);
   const [cexSellLow, setCexSellLow] = useState<number>(0);
   const [cexSellHigh, setCexSellHigh] = useState<number>(0);
@@ -66,7 +66,7 @@ function App() {
 
         // Update results incrementally
         if (response.data.results && response.data.results.length > 0) {
-          setResults(prev => [...prev, ...response.data.results].sort((a, b) => a.price - b.price));
+          setResults(prev => [...prev, ...response.data.results]);
         }
 
         // Special handling for CeX Sell prices
@@ -126,28 +126,30 @@ function App() {
   const getFilteredResults = () => {
     if (results.length === 0) return [];
 
-    // 1. Keyword-based Cleanup
-    const accessoryKeywords = ['case', 'cover', 'protector', 'glass', 'box only', 'parts', 'broken', 'repair', 'manual', 'cable'];
+    // 1. Keyword-based Cleanup (Softened)
+    const accessoryKeywords = ['case', 'cover', 'protector', 'screen glass', 'parts', 'repair', 'manual'];
     let filtered = results.filter(product => {
       const title = product.title.toLowerCase();
 
-      // Keyword mismatch detection (Accessories/Parts)
-      if (accessoryKeywords.some(keyword => title.includes(keyword))) {
+      // Only filter out accessories if they AREN'T part of the query
+      // (e.g. if I search for "iPhone Case", don't filter out cases)
+      const queryLower = lastQuery.toLowerCase();
+      if (accessoryKeywords.some(keyword => title.includes(keyword) && !queryLower.includes(keyword))) {
         return false;
       }
 
       // 2. Strict Match Logic (Optional)
       if (strictMatch && lastQuery) {
-        const keywords = lastQuery.toLowerCase().split(' ').filter(word => word.trim().length > 0);
-        const hasAllKeywords = keywords.every(kw => title.includes(kw));
-        if (!hasAllKeywords) return false;
+        const keywords = queryLower.split(' ').filter(word => word.trim().length > 1);
+        const hasSomeKeywords = keywords.some(kw => title.includes(kw));
+        if (!hasSomeKeywords) return false;
       }
 
       return true;
     });
 
-    const dataToUse = filtered.length > 0 ? filtered : results;
-    if (dataToUse.length === 0) return [];
+    // If we filtered out too much, show the raw results
+    const dataToUse = (filtered.length === 0) ? results : filtered;
 
     // 3. Application of Absolute Price Filter & Sorting
     return dataToUse
