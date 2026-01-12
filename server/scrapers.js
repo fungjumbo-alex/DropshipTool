@@ -851,7 +851,8 @@ async function scrapePopularProducts(query, location = 'UK', count = 50) {
     let browser;
     try {
         const domain = location.toUpperCase() === 'UK' ? 'ebay.co.uk' : 'ebay.com';
-        const url = `https://www.${domain}/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=12`;
+        // Request 100 items per page (_ipg=100) to ensure we have enough after filtering out accessories
+        const url = `https://www.${domain}/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=12&_ipg=100`;
 
         browser = await getBrowser();
         const page = await createStealthContext(browser, location, {
@@ -863,8 +864,12 @@ async function scrapePopularProducts(query, location = 'UK', count = 50) {
 
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
         await page.waitForTimeout(3000);
-        await page.evaluate(() => window.scrollBy(0, 1000));
-        await page.waitForTimeout(1000);
+
+        // Multiple scrolls to trigger more lazy loading and capture the full 100 items
+        for (let i = 0; i < 4; i++) {
+            await page.evaluate(() => window.scrollBy(0, 2500));
+            await page.waitForTimeout(1000);
+        }
 
         const products = await page.evaluate((maxCount) => {
             const cards = Array.from(document.querySelectorAll('li.s-card, .s-card, .s-item, .s-item__wrapper, li[data-view]'));
@@ -872,19 +877,24 @@ async function scrapePopularProducts(query, location = 'UK', count = 50) {
             const seenTitles = new Set();
 
             for (const item of cards) {
+                // If we found enough distinct high-quality items, we can stop
                 if (results.length >= maxCount) break;
 
                 const titleEl = item.querySelector('.s-card__title, .s-item__title');
-                // Use the exact same image logic as scrapeEbay
-                const imgEl = item.querySelector('.s-card__image img, .s-item__image-img, img');
+                const imgEl = item.querySelector('.s-card__image img, .s-item__image-img, img[src*="ebayimg"]');
 
                 if (titleEl) {
                     let fullTitle = titleEl.innerText || '';
-                    if (fullTitle.toLowerCase().includes('case') ||
-                        fullTitle.toLowerCase().includes('cover') ||
-                        fullTitle.toLowerCase().includes('protector') ||
-                        fullTitle.toLowerCase().includes('shop on ebay') ||
-                        fullTitle.toLowerCase().includes('box only')) continue;
+                    const lowerTitle = fullTitle.toLowerCase();
+
+                    // Filter out non-product or accessory items
+                    if (lowerTitle.includes('case') ||
+                        lowerTitle.includes('cover') ||
+                        lowerTitle.includes('protector') ||
+                        lowerTitle.includes('glass') ||
+                        lowerTitle.includes('screen film') ||
+                        lowerTitle.includes('shop on ebay') ||
+                        lowerTitle.includes('box only')) continue;
 
                     // Clean up title
                     let cleanTitle = fullTitle
@@ -893,12 +903,12 @@ async function scrapePopularProducts(query, location = 'UK', count = 50) {
                         .replace(/Opens in a new window or tab/g, '')
                         .trim();
 
-                    // Take first 4 words for a general product name
+                    // Take first 5 words for a balanced search term
                     const words = cleanTitle.split(' ').filter(w => w.length > 1);
-                    const shortened = words.slice(0, 4).join(' ');
+                    const shortened = words.slice(0, 5).join(' ');
 
-                    if (shortened.length > 5 && !seenTitles.has(shortened)) {
-                        seenTitles.add(shortened);
+                    if (shortened.length > 5 && !seenTitles.has(shortened.toLowerCase())) {
+                        seenTitles.add(shortened.toLowerCase());
 
                         let imgSrc = null;
                         if (imgEl) {
