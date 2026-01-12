@@ -847,4 +847,76 @@ async function scrapeCexSell(query) {
     }
 }
 
-module.exports = { scrapeEbay, scrapeFacebook, scrapeCex, scrapeGumtree, scrapeBackMarket, scrapeMusicMagpie, scrapeCashConverters, scrapeCexSell };
+async function scrapePopularProducts(query, location = 'UK', count = 50) {
+    let browser;
+    try {
+        const domain = location.toUpperCase() === 'UK' ? 'ebay.co.uk' : 'ebay.com';
+        const url = `https://www.${domain}/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=12`;
+
+        browser = await getBrowser();
+        const page = await createStealthContext(browser, location, {
+            userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
+            viewport: { width: 390, height: 844 },
+            isMobile: true,
+            hasTouch: true
+        });
+
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForTimeout(3000);
+        await page.evaluate(() => window.scrollBy(0, 1000));
+        await page.waitForTimeout(1000);
+
+        const products = await page.evaluate((maxCount) => {
+            const cards = Array.from(document.querySelectorAll('li.s-card, .s-card, .s-item, .s-item__wrapper, li[data-view]'));
+            const results = [];
+
+            for (const item of cards) {
+                if (results.length >= maxCount) break;
+
+                const titleEl = item.querySelector('.s-card__title, .s-item__title');
+                if (titleEl) {
+                    let fullTitle = titleEl.innerText || '';
+                    if (fullTitle.toLowerCase().includes('case') ||
+                        fullTitle.toLowerCase().includes('cover') ||
+                        fullTitle.toLowerCase().includes('protector') ||
+                        fullTitle.toLowerCase().includes('shop on ebay') ||
+                        fullTitle.toLowerCase().includes('box only')) continue;
+
+                    // Clean up title
+                    let cleanTitle = fullTitle
+                        .replace(/NEW|New|BRAND NEW|Brand New|Seal|SEALED|Sealed/g, '')
+                        .replace(/\[.*?\]|\(.*?\)/g, '')
+                        .replace(/Opens in a new window or tab/g, '')
+                        .trim();
+
+                    // Take first 4 words for a general product name
+                    const words = cleanTitle.split(' ').filter(w => w.length > 1);
+                    const shortened = words.slice(0, 4).join(' ');
+
+                    if (shortened.length > 5 && !results.includes(shortened)) {
+                        results.push(shortened);
+                    }
+                }
+            }
+            return results;
+        }, count);
+        return products;
+    } catch (error) {
+        console.error('Popular Products Scrape Error:', error.message);
+        return [];
+    } finally {
+        if (browser) await browser.close();
+    }
+}
+
+module.exports = {
+    scrapeEbay,
+    scrapeFacebook,
+    scrapeCex,
+    scrapeGumtree,
+    scrapeBackMarket,
+    scrapeMusicMagpie,
+    scrapeCashConverters,
+    scrapeCexSell,
+    scrapePopularProducts
+};

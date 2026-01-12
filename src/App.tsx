@@ -20,6 +20,21 @@ function App() {
   const [strictMatch, setStrictMatch] = useState(false);
   const [lastQuery, setLastQuery] = useState('');
   const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [popularSuggestions, setPopularSuggestions] = useState<string[]>([]);
+  const [isPopularLoading, setIsPopularLoading] = useState(false);
+  const [discoveryKeyword, setDiscoveryKeyword] = useState('apple');
+
+  const fetchPopular = async (query: string = 'apple', location: string = 'UK') => {
+    setIsPopularLoading(true);
+    try {
+      const response = await axios.get(`/api/popular?query=${encodeURIComponent(query)}&location=${location}&count=50`);
+      setPopularSuggestions(response.data.products || []);
+    } catch (err) {
+      console.error('Failed to fetch popular items:', err);
+    } finally {
+      setIsPopularLoading(false);
+    }
+  };
 
   const handleSearch = async (query: string, location: string) => {
     setIsLoading(true);
@@ -177,6 +192,57 @@ function App() {
             Identify high-margin dropshipping opportunities instantly.
           </p>
         </header>
+
+        {/* Market Discovery */}
+        <div className="mb-12">
+          <div className="flex flex-col md:flex-row md:items-center gap-4 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-500/20 rounded-xl">
+                <TrendingUp className="text-purple-400" size={20} />
+              </div>
+              <h2 className="text-xl font-bold">Market Discovery</h2>
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto">
+              <input
+                type="text"
+                value={discoveryKeyword}
+                onChange={(e) => setDiscoveryKeyword(e.target.value)}
+                placeholder="Enter brand (e.g. Sony)"
+                className="bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs font-medium focus:outline-none focus:border-brand-primary/50 transition-colors w-40"
+              />
+              <button
+                onClick={() => fetchPopular(discoveryKeyword, currency === 'GBP' ? 'UK' : 'US')}
+                className="text-xs font-bold uppercase tracking-wider bg-brand-primary/10 text-brand-primary px-4 py-2 rounded-xl hover:bg-brand-primary hover:text-white transition-all flex items-center gap-2"
+                disabled={isPopularLoading}
+              >
+                {isPopularLoading ? <RefreshCw className="animate-spin" size={14} /> : <Search size={14} />}
+                Explore
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            {popularSuggestions.length > 0 ? (
+              popularSuggestions.map((term, i) => (
+                <motion.button
+                  key={term}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: i * 0.05 }}
+                  onClick={() => handleSearch(term, currency === 'GBP' ? 'UK' : 'US')}
+                  className="px-4 py-2 glass rounded-2xl text-sm font-medium hover:bg-brand-primary/20 hover:border-brand-primary/50 transition-all border border-white/5"
+                >
+                  {term}
+                </motion.button>
+              ))
+            ) : (
+              <div className="w-full p-8 border-2 border-dashed border-white/5 rounded-3xl text-center">
+                <p className="text-white/20 text-sm">Click "Refresh Trending" to discover popular products for arbitrage.</p>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Search & Filter */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-12">

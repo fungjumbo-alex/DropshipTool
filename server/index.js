@@ -1,12 +1,35 @@
 const express = require('express');
 const cors = require('cors');
-const { scrapeEbay, scrapeFacebook, scrapeCex, scrapeGumtree, scrapeBackMarket, scrapeMusicMagpie, scrapeCashConverters, scrapeCexSell } = require('./scrapers');
+const {
+    scrapeEbay,
+    scrapeFacebook,
+    scrapeCex,
+    scrapeGumtree,
+    scrapeBackMarket,
+    scrapeMusicMagpie,
+    scrapeCashConverters,
+    scrapeCexSell,
+    scrapePopularProducts
+} = require('./scrapers');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
+
+app.get('/api/popular', async (req, res) => {
+    const { query = 'apple', location = 'UK', count = 50 } = req.query;
+    console.log(`[API] Fetching popular products for: "${query}" in ${location}`);
+
+    try {
+        const products = await scrapePopularProducts(query, location, parseInt(count));
+        res.json({ products });
+    } catch (error) {
+        console.error('[API] Popular Products Error:', error);
+        res.status(500).json({ error: 'Failed' });
+    }
+});
 
 app.get('/api/compare', async (req, res) => {
     const { query, location = 'US', source } = req.query;
