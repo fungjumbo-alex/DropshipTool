@@ -232,18 +232,18 @@ function App() {
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: i * 0.05 }}
                   onClick={() => handleSearch(item.title, location)}
-                  className="pl-2 pr-4 py-2 glass rounded-2xl text-sm font-medium hover:bg-brand-primary/20 hover:border-brand-primary/50 transition-all border border-white/5 flex items-center gap-3 group"
+                  className="pl-3 pr-5 py-3 glass rounded-3xl text-sm font-semibold hover:bg-brand-primary/20 hover:border-brand-primary/50 transition-all border border-white/5 flex items-center gap-4 group shadow-lg"
                 >
-                  <div className="w-8 h-8 rounded-lg overflow-hidden bg-white/5 flex-shrink-0 border border-white/10 group-hover:border-brand-primary/30 transition-colors">
+                  <div className="w-16 h-16 rounded-2xl overflow-hidden bg-white/5 flex-shrink-0 border border-white/10 group-hover:border-brand-primary/30 transition-colors shadow-inner">
                     {item.image ? (
-                      <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                      <img src={item.image} alt={item.title} className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-white/5">
-                        <Search size={12} className="text-white/20" />
+                        <Search size={20} className="text-white/20" />
                       </div>
                     )}
                   </div>
-                  <span>{item.title}</span>
+                  <span className="max-w-[150px] leading-tight text-left">{item.title}</span>
                 </motion.button>
               ))
             ) : (
