@@ -8,6 +8,8 @@ interface PriceFilterProps {
     currency: string;
     strictMatch: boolean;
     onStrictMatchChange: (value: boolean) => void;
+    hideLowMatch: boolean;
+    onHideLowMatchChange: (value: boolean) => void;
     disabled: boolean;
 }
 
@@ -19,6 +21,8 @@ export const PriceFilter: React.FC<PriceFilterProps> = ({
     currency,
     strictMatch,
     onStrictMatchChange,
+    hideLowMatch,
+    onHideLowMatchChange,
     disabled
 }) => {
     return (
@@ -46,26 +50,49 @@ export const PriceFilter: React.FC<PriceFilterProps> = ({
                 </div>
             </div>
 
-            <label className="flex items-center gap-3 cursor-pointer group">
-                <div className="relative">
-                    <input
-                        type="checkbox"
-                        checked={strictMatch}
-                        onChange={(e) => onStrictMatchChange(e.target.checked)}
-                        className="sr-only"
-                    />
-                    <div className={`w-5 h-5 border-2 rounded-md transition-all ${strictMatch ? 'bg-brand-primary border-brand-primary' : 'border-white/20 bg-white/5'}`}>
-                        {strictMatch && (
-                            <svg className="w-4 h-4 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                        )}
+            <div className="space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative">
+                        <input
+                            type="checkbox"
+                            checked={strictMatch}
+                            onChange={(e) => onStrictMatchChange(e.target.checked)}
+                            className="sr-only"
+                        />
+                        <div className={`w-5 h-5 border-2 rounded-md transition-all ${strictMatch ? 'bg-brand-primary border-brand-primary' : 'border-white/20 bg-white/5'}`}>
+                            {strictMatch && (
+                                <svg className="w-4 h-4 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                            )}
+                        </div>
                     </div>
-                </div>
-                <span className="text-xs font-bold text-white/60 uppercase tracking-wider group-hover:text-white transition-colors">
-                    Strict Keyword Match
-                </span>
-            </label>
+                    <span className="text-xs font-bold text-white/60 uppercase tracking-wider group-hover:text-white transition-colors">
+                        Strict Keyword Match
+                    </span>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative">
+                        <input
+                            type="checkbox"
+                            checked={hideLowMatch}
+                            onChange={(e) => onHideLowMatchChange(e.target.checked)}
+                            className="sr-only"
+                        />
+                        <div className={`w-5 h-5 border-2 rounded-md transition-all ${hideLowMatch ? 'bg-orange-500 border-orange-500' : 'border-white/20 bg-white/5'}`}>
+                            {hideLowMatch && (
+                                <svg className="w-4 h-4 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                            )}
+                        </div>
+                    </div>
+                    <span className="text-xs font-bold text-white/60 uppercase tracking-wider group-hover:text-white transition-colors">
+                        Hide Low Match (&lt;50%)
+                    </span>
+                </label>
+            </div>
         </div>
     );
 };

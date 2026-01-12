@@ -18,6 +18,7 @@ function App() {
   const [cexSellLow, setCexSellLow] = useState<number>(0);
   const [cexSellHigh, setCexSellHigh] = useState<number>(0);
   const [strictMatch, setStrictMatch] = useState(false);
+  const [hideLowMatch, setHideLowMatch] = useState(true);
   const [lastQuery, setLastQuery] = useState('');
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [popularSuggestions, setPopularSuggestions] = useState<{ title: string, image: string | null }[]>([]);
@@ -175,6 +176,11 @@ function App() {
         if (!hasAllKeywords) return false;
       }
 
+      // 3. Match Score Filtering (Hide < 50%)
+      if (hideLowMatch && typeof product.matchScore === 'number' && product.matchScore < 50) {
+        return false;
+      }
+
       return true;
     });
 
@@ -310,7 +316,9 @@ function App() {
               currency={currency}
               strictMatch={strictMatch}
               onStrictMatchChange={setStrictMatch}
-              disabled={results.length === 0}
+              hideLowMatch={hideLowMatch}
+              onHideLowMatchChange={setHideLowMatch}
+              disabled={isLoading}
             />
           </div>
         </div>
