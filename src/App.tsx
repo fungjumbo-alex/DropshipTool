@@ -122,12 +122,45 @@ function App() {
     }
   };
 
+  const calculateMatchScore = (title: string, query: string): number => {
+    if (!query) return 100;
+    const titleLower = title.toLowerCase();
+    const queryWords = query.toLowerCase().split(' ').filter(w => w.trim().length > 1);
+
+    if (queryWords.length === 0) return 100;
+
+    let matches = 0;
+    queryWords.forEach(word => {
+      if (titleLower.includes(word)) {
+        matches++;
+      }
+    });
+
+    const baseScore = (matches / queryWords.length) * 100;
+
+    // Negative Penalties for "Model Clashes" (Very important for Arbitrage)
+    let penalty = 0;
+    const checkPenalty = (word: string, opposite: string) => {
+      if (query.toLowerCase().includes(word) && titleLower.includes(opposite)) penalty += 30;
+    };
+
+    checkPenalty('max', 'mini');
+    checkPenalty('pro', 'air');
+    checkPenalty('plus', 'mini');
+    checkPenalty('ipad', 'iphone');
+
+    return Math.max(0, Math.round(baseScore - penalty));
+  };
+
   const getFilteredResults = () => {
     if (results.length === 0) return [];
 
     // 1. Keyword-based Cleanup (Restored to Strict)
     const accessoryKeywords = ['case', 'cover', 'protector', 'glass', 'box only', 'parts', 'broken', 'repair', 'manual', 'cable'];
-    let filtered = results.filter(product => {
+    let filteredWithScores = results.map(product => ({
+      ...product,
+      matchScore: calculateMatchScore(product.title, lastQuery)
+    })).filter(product => {
       const title = product.title.toLowerCase();
 
       // Restore strict accessory filtering
@@ -145,7 +178,7 @@ function App() {
       return true;
     });
 
-    const dataToUse = filtered.length > 0 ? filtered : results;
+    const dataToUse = filteredWithScores.length > 0 ? filteredWithScores : [];
     if (dataToUse.length === 0) return [];
 
     // 3. Application of Absolute Price Filter & Sorting
@@ -154,7 +187,7 @@ function App() {
         if (isNaN(item.price) || item.price <= 0) return false;
         return item.price >= minPrice && item.price <= maxPrice;
       })
-      .sort((a, b) => a.price - b.price);
+      .sort((a, b) => b.matchScore - a.matchScore || a.price - b.price); // Primary sort by match score
   };
 
   const filteredResults = getFilteredResults();
