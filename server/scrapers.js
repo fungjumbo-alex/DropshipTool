@@ -280,13 +280,14 @@ async function scrapeFacebook(query, location = 'US') {
         });
 
         const city = location.toUpperCase() === 'UK' ? 'london' : 'nyc';
-        // Force mobile domain for better consistency and bypass
-        const url = `https://m.facebook.com/marketplace/${city}/search/?query=${encodeURIComponent(query)}`;
-        console.log(`Facebook Search URL (Mobile): ${url}`);
+        // Use the more generic search URL which handles redirects better
+        const url = `https://m.facebook.com/marketplace/search/?query=${encodeURIComponent(query)}`;
+        console.log(`Facebook Search URL (Mobile Generic): ${url}`);
 
-        // Reduced timeouts for serverless consistency
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-        await page.waitForTimeout(2000);
+        // Aggressively reduced timeouts for serverless consistency (Netlify 26s limit)
+        const loadTimeout = isProduction ? 15000 : 25000;
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: loadTimeout });
+        await page.waitForTimeout(1000);
 
         // Check for blocking/login walls
         const pageContent = await page.content();

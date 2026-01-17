@@ -60,14 +60,24 @@ app.get('/api/compare', async (req, res) => {
                     return scrapeWithFallback(query, 'facebook', location, async (q, loc) => {
                         // Original fallback logic if browser-use fails/offline
                         if (isServerless && skipFacebookOnFirebase) {
-                            console.log('[Facebook] Skipped on Firebase (SKIP_FACEBOOK_ON_FIREBASE=true)');
                             return {
                                 results: [],
                                 url: `https://www.facebook.com/marketplace/search/?query=${encodeURIComponent(query)}`,
-                                error: 'Facebook disabled on Firebase (datacenter IP blocking)'
+                                error: 'Facebook blocked by datacenter IP protection. Tip: Use AI agent (browser-use) for better results on Firebase.'
                             };
                         }
-                        return scrapeFacebook(q, loc);
+                        try {
+                            return await scrapeFacebook(q, loc);
+                        } catch (e) {
+                            if (isServerless) {
+                                return {
+                                    results: [],
+                                    url: `https://www.facebook.com/marketplace/search/?query=${encodeURIComponent(query)}`,
+                                    error: `Facebook Blocked: ${e.message}. Tip: AI search is more resilient.`
+                                };
+                            }
+                            throw e;
+                        }
                     });
                 }
             },
