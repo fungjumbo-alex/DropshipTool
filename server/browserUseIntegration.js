@@ -63,9 +63,15 @@ async function searchWithBrowserUse(query, marketplace, location = 'UK') {
  * @returns {Promise<boolean>}
  */
 async function isBrowserUseAvailable() {
+    // Skip if in production and using localhost (unreachable)
+    const isProduction = process.env.FUNCTION_NAME || process.env.K_SERVICE || process.env.VERCEL || process.env.NET_LIFY;
+    if (isProduction && BROWSER_USE_API_URL.includes('localhost')) {
+        return false;
+    }
+
     try {
         const response = await axios.get(`${BROWSER_USE_API_URL}/`, {
-            timeout: 5000
+            timeout: 2000 // Reduced from 5s to 2s
         });
         return response.data.status === 'online';
     } catch (error) {

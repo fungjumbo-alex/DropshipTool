@@ -284,8 +284,9 @@ async function scrapeFacebook(query, location = 'US') {
         const url = `https://m.facebook.com/marketplace/${city}/search/?query=${encodeURIComponent(query)}`;
         console.log(`Facebook Search URL (Mobile): ${url}`);
 
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await page.waitForTimeout(5000);
+        // Reduced timeouts for serverless consistency
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+        await page.waitForTimeout(2000);
 
         // Check for blocking/login walls
         const pageContent = await page.content();
@@ -334,16 +335,14 @@ async function scrapeFacebook(query, location = 'US') {
             });
         } catch (e) { }
 
-        // Two scrolls to ensure items load
+        // One quick scroll for production speed
         await page.evaluate(async () => {
-            window.scrollBy(0, 800);
-            await new Promise(r => setTimeout(r, 1000));
-            window.scrollBy(0, 800);
-            await new Promise(r => setTimeout(r, 1000));
+            window.scrollBy(0, 1000);
+            await new Promise(r => setTimeout(r, 500));
         });
 
         try {
-            await page.waitForSelector('a[href*="/marketplace/item/"]', { timeout: 15000 }).catch(() => { });
+            await page.waitForSelector('a[href*="/marketplace/item/"]', { timeout: 4000 }).catch(() => { });
         } catch (e) {
             console.warn('Facebook: Timeout waiting for item links');
         }
@@ -555,32 +554,33 @@ async function scrapeBackMarket(query, location = 'US') {
             hasTouch: true
         });
 
-        // Standard navigation
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
+        // Standard navigation with smarter timeout
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-        // Wait for page stabilization
+        // Wait for page stabilization - reduced for serverless speed
         let passed = false;
-        for (let i = 0; i < 20; i++) {
+        const maxRetries = 4; // Reduced from 20 to 4 for production speed
+        for (let i = 0; i < maxRetries; i++) {
             try {
                 const title = await page.title();
                 const content = await page.content();
 
                 if (title.includes('Just a moment') || title.includes('Checking your browser')) {
-                    console.log(`BackMarket: Waiting for Cloudflare (${i + 1}/20)...`);
-                    await page.waitForTimeout(4000);
+                    console.log(`BackMarket: Waiting for Cloudflare (${i + 1}/${maxRetries})...`);
+                    await page.waitForTimeout(3000);
                 } else if (content.includes('product-item') || content.includes('productCard') || content.includes('Back Market') || content.includes('/p/')) {
                     passed = true;
                     break;
                 } else {
-                    await page.waitForTimeout(2000);
+                    await page.waitForTimeout(1500);
                 }
             } catch (e) {
-                await page.waitForTimeout(4000);
+                await page.waitForTimeout(2000);
             }
         }
 
-        // Extra wait for Algolia to render
-        await page.waitForTimeout(5000);
+        // Extra wait for Algolia to render - reduced
+        await page.waitForTimeout(2000);
 
         const items = await page.evaluate(() => {
             const results = [];
