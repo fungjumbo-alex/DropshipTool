@@ -11,6 +11,7 @@ const {
     scrapeCexSell,
     scrapePopularProducts
 } = require('./scrapers');
+const { scrapeWithFallback, isBrowserUseAvailable } = require('./browserUseIntegration');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -55,21 +56,27 @@ app.get('/api/compare', async (req, res) => {
                 id: 'facebook',
                 name: 'Facebook',
                 fn: () => {
-                    // Skip Facebook on Firebase if configured
-                    if (isServerless && skipFacebookOnFirebase) {
-                        console.log('[Facebook] Skipped on Firebase (SKIP_FACEBOOK_ON_FIREBASE=true)');
-                        return Promise.resolve({
-                            results: [],
-                            url: `https://www.facebook.com/marketplace/search/?query=${encodeURIComponent(query)}`,
-                            error: 'Facebook disabled on Firebase (datacenter IP blocking)'
-                        });
-                    }
-                    return scrapeFacebook(query, location);
+                    // Try browser-use for Facebook especially on Firebase
+                    return scrapeWithFallback(query, 'facebook', location, async (q, loc) => {
+                        // Original fallback logic if browser-use fails/offline
+                        if (isServerless && skipFacebookOnFirebase) {
+                            console.log('[Facebook] Skipped on Firebase (SKIP_FACEBOOK_ON_FIREBASE=true)');
+                            return {
+                                results: [],
+                                url: `https://www.facebook.com/marketplace/search/?query=${encodeURIComponent(query)}`,
+                                error: 'Facebook disabled on Firebase (datacenter IP blocking)'
+                            };
+                        }
+                        return scrapeFacebook(q, loc);
+                    });
                 }
             },
-            { id: 'backmarket', name: 'BackMarket', fn: () => scrapeBackMarket(query, location) },
-            { id: 'cashconverters', name: 'CashConverters', fn: () => scrapeCashConverters(query, location) },
-            { id: 'cexsell', name: 'CeXSell', fn: () => (location === 'UK' ? scrapeCexSell(query) : Promise.resolve({ results: [], url: '' })) }
+            {
+                id: 'backmarket',
+                name: 'BackMarket',
+                fn: () => scrapeWithFallback(query, 'backmarket', location, scrapeBackMarket)
+            },
+            { id: 'cashconverters', name: 'CashConverters', fn: () => scrapeCashConverters(query, location) }
         ];
 
         // Filter by source if requested
@@ -103,6 +110,7 @@ app.get('/api/compare', async (req, res) => {
         const responseData = {
             query,
             timestamp: new Date().toISOString(),
+            browserUseActive: await isBrowserUseAvailable(),
             results: batchResults.flatMap(r => r.results || []),
             debug: {
                 counts: {},
@@ -121,14 +129,6 @@ app.get('/api/compare', async (req, res) => {
             responseData[`${r.scraperId}Url`] = r.url;
             responseData.debug.counts[r.scraperId] = r.results?.length || 0;
             if (r.error) responseData.debug.errors[r.scraperId] = r.error;
-
-            if (r.scraperId === 'cexsell' && r.results?.length > 0) {
-                const prices = r.results.map(i => i.cashPrice).filter(p => !isNaN(p));
-                if (prices.length > 0) {
-                    responseData.cexSellPriceLow = Math.min(...prices);
-                    responseData.cexSellPriceHigh = Math.max(...prices);
-                }
-            }
         });
 
         res.json(responseData);

@@ -93,13 +93,18 @@ class DropshipBrowserAgent:
             'gumtree': f'https://www.gumtree.com/search?search_category=all&q={query.replace(" ", "+")}',
             'backmarket': f'https://www.backmarket.co.uk/en-gb/search?q={query.replace(" ", "+")}',
             'cex': f'https://uk.webuy.com/search?stext={query.replace(" ", "+")}',
-            'cashconverters': f'https://www.cashconverters.co.uk/shop/search?q={query.replace(" ", "+")}',
+            'cashconverters': f'https://www.cashconverters.co.uk/search-results?query={query.replace(" ", "+")}',
         }
         
         url = marketplace_urls.get(marketplace.lower(), marketplace_urls['ebay'])
         
         task = f"""
 Go to {url} and extract product listings for "{query}".
+
+IMPORTANT:
+1. If you encounter a "Just a moment..." or "Checking your browser" page (Cloudflare), wait for it to finish. Do not give up.
+2. For Back Market, look for items in the search results grid. Product links typically contain "/p/" or "/en-gb/p/".
+3. For Cash Converters, look for items with class ".product-item".
 
 For each product listing, extract:
 1. Product title
@@ -134,35 +139,83 @@ Focus on actual product listings, not ads or sponsored content.
     
     def _extract_results(self, history: Any, marketplace: str) -> List[Dict[str, Any]]:
         """Extract structured results from agent history"""
-        
         results = []
+        history_str = ""
         
-        # Try to find JSON in the history
-        history_str = str(history)
+        # 1. Try to get result from final_result() if available
+        try:
+            if hasattr(history, 'final_result') and history.final_result():
+                res_obj = history.final_result()
+                history_str += str(res_obj)
+        except:
+            pass
+            
+        # 2. Add full history string as fallback
+        history_str += "\n" + str(history)
         
-        # Look for JSON arrays in the response
-        json_pattern = r'\[[\s\S]*?\{[\s\S]*?"title"[\s\S]*?\}[\s\S]*?\]'
+        # 3. Clean up escaped characters if they exist
+        if '\\"' in history_str:
+            # Try to unescape
+            try:
+                # Replace escaped quotes with regular quotes for easier regex matching
+                history_str = history_str.replace('\\"', '"').replace('\\n', '\n')
+            except:
+                pass
+        
+        # 4. Look for JSON arrays in the response
+        # Improved regex to find any JSON-like list of objects
+        json_pattern = r'\[\s*\{[\s\S]*?\}\s*\]'
         matches = re.findall(json_pattern, history_str)
+        
+        # Sort matches by length (prefer longer ones as they likely contain more data)
+        matches.sort(key=len, reverse=True)
         
         for match in matches:
             try:
-                parsed = json.loads(match)
+                # Basic cleanup of Common AI formatting markers
+                clean_match = match.strip()
+                parsed = json.loads(clean_match)
                 if isinstance(parsed, list):
                     for item in parsed:
-                        if 'title' in item and 'price' in item:
-                            # Normalize the result format
-                            result = {
+                        if not isinstance(item, dict):
+                            continue
+                            
+                        # Intelligent key mapping (AI often uses varied names)
+                        title = item.get('title') or item.get('Product title') or item.get('name', 'Unknown Product')
+                        price_val = item.get('price') or item.get('Price') or 0
+                        
+                        # Convert price to float if it's a string
+                        if isinstance(price_val, str):
+                            try:
+                                # Remove currency symbols and commas
+                                price_val = re.sub(r'[^\d.]', '', price_val)
+                                price_val = float(price_val) if price_val else 0
+                            except:
+                                price_val = 0
+                        
+                        currency = item.get('currency') or item.get('Currency') or ('GBP' if '£' in str(item) else 'USD')
+                        link = item.get('link') or item.get('Product link') or item.get('url') or ''
+                        image = item.get('image') or item.get('Image URL') or item.get('image_url')
+                        condition = item.get('condition') or item.get('Condition') or 'Unknown'
+                        seller = item.get('seller') or item.get('Seller') or item.get('Seller information')
+                        
+                        if title and title != 'Unknown Product':
+                            results.append({
                                 'source': marketplace.title(),
-                                'title': item.get('title', ''),
-                                'price': float(item.get('price', 0)),
-                                'currency': item.get('currency', 'GBP'),
-                                'link': item.get('link', ''),
-                                'image': item.get('image'),
-                                'condition': item.get('condition', 'Unknown'),
-                                'seller': item.get('seller')
-                            }
-                            results.append(result)
-            except json.JSONDecodeError:
+                                'title': str(title).strip(),
+                                'price': float(price_val),
+                                'currency': str(currency),
+                                'link': str(link).strip(),
+                                'image': str(image).strip() if image else None,
+                                'condition': str(condition).strip(),
+                                'seller': str(seller).strip() if seller else None
+                            })
+                    
+                    # If we found valid results in this match, we can stop
+                    if results:
+                        break
+            except Exception as e:
+                print(f"Error parsing JSON match: {e}")
                 continue
         
         return results

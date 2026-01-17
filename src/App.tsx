@@ -15,8 +15,6 @@ function App() {
   // currency state is already defined above
   const [minPrice, setMinPrice] = useState<number>(10);
   const [maxPrice, setMaxPrice] = useState<number>(10000);
-  const [cexSellLow, setCexSellLow] = useState<number>(0);
-  const [cexSellHigh, setCexSellHigh] = useState<number>(0);
   const [strictMatch, setStrictMatch] = useState(false);
   const [hideLowMatch, setHideLowMatch] = useState(true);
   const [lastQuery, setLastQuery] = useState('');
@@ -26,6 +24,7 @@ function App() {
   const [discoveryKeyword, setDiscoveryKeyword] = useState('apple');
   const [location, setLocation] = useState('UK');
   const [searchQuery, setSearchQuery] = useState('');
+  const [browserUseActive, setBrowserUseActive] = useState(false);
 
   const fetchPopular = async (query: string = 'apple', currentLoc: string = location) => {
     setIsPopularLoading(true);
@@ -53,8 +52,7 @@ function App() {
       { id: 'cex', name: 'CeX' },
       { id: 'gumtree', name: 'Gumtree' },
       { id: 'cashconverters', name: 'CashConverters' },
-      { id: 'backmarket', name: 'BackMarket' },
-      { id: 'cexsell', name: 'CeX Arbitrage' }
+      { id: 'backmarket', name: 'BackMarket' }
     ];
 
     setCurrency(location === 'UK' ? 'GBP' : 'USD');
@@ -69,11 +67,6 @@ function App() {
           setResults(prev => [...prev, ...response.data.results]);
         }
 
-        // Special handling for CeX Sell prices
-        if (sourceId === 'cexsell') {
-          setCexSellLow(response.data.cexSellPriceLow || 0);
-          setCexSellHigh(response.data.cexSellPriceHigh || 0);
-        }
 
         // Update debug info incrementally
         if (response.data.debug?.scraperStatus) {
@@ -81,6 +74,11 @@ function App() {
             ...prev,
             scraperStatus: [...(prev?.scraperStatus || []), ...response.data.debug.scraperStatus]
           }));
+        }
+
+        // Track browser-use status
+        if (response.data.browserUseActive !== undefined) {
+          setBrowserUseActive(response.data.browserUseActive);
         }
       } catch (err: any) {
         console.error(`Failed to fetch ${sourceId}:`, err);
@@ -384,33 +382,21 @@ function App() {
                 </div>
               </div>
 
-              <div className="glass p-6 rounded-3xl flex items-center gap-5 relative overflow-hidden">
-                <div className="p-4 bg-orange-500/20 rounded-2xl">
-                  <div className="text-orange-400 font-bold text-xl">£</div>
-                </div>
-                <div>
-                  <p className="text-white/40 text-sm font-medium">CeX Cash Price</p>
-                  <p className="text-2xl font-bold text-white">
-                    {cexSellHigh > 0
-                      ? (cexSellLow !== cexSellHigh
-                        ? `£${cexSellLow} - £${cexSellHigh}`
-                        : `£${cexSellHigh}`)
-                      : 'N/A'}
-                  </p>
-                  {cexSellHigh > (bestPrice || 999999) && (
-                    <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider absolute top-4 right-4">
-                      Arbitrage!
-                    </span>
-                  )}
-                </div>
-              </div>
             </motion.div>
           )}
         </AnimatePresence>
         {/* Error Display for Production Debugging */}
         {!isLoading && lastQuery && (
           <div className="mb-8 p-4 bg-white/5 border border-white/10 rounded-2xl">
-            <h3 className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-3">Backend Scraper Status</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-white/40 text-[10px] font-bold uppercase tracking-widest">Backend Scraper Status</h3>
+              {browserUseActive && (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-brand-primary/10 border border-brand-primary/20 rounded-full">
+                  <div className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-pulse" />
+                  <span className="text-[9px] font-bold text-brand-primary uppercase tracking-wider">AI-Powered Search Active</span>
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {debugInfo?.scraperStatus?.map((s: any, i: number) => (
                 <div key={`${s.name}-${i}`} className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/5">
@@ -443,7 +429,6 @@ function App() {
               >
                 <ProductCard
                   product={product}
-                  arbitragePotential={cexSellLow > 0 && product.price < cexSellLow}
                 />
               </motion.div>
             ))}

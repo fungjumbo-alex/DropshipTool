@@ -584,30 +584,67 @@ async function scrapeBackMarket(query, location = 'US') {
 
         const items = await page.evaluate(() => {
             const results = [];
-            // Target any link that goes to a product page
-            const containers = Array.from(document.querySelectorAll('a[href*="/p/"]'));
+            // Target precise product cards from recent DOM analysis
+            const cards = Array.from(document.querySelectorAll('[data-qa="productCard"], div.product-item, [data-test="product-card"]'));
 
-            containers.forEach(link => {
-                const text = link.innerText;
-                if (!text.includes('£')) return;
+            cards.forEach(card => {
+                const linkEl = card.tagName === 'A' ? card : (card.querySelector('a[href*="/p/"]') || card.querySelector('a[href*="/product/"]'));
+                if (!linkEl) return;
 
-                const priceMatch = text.match(/£\s?([\d,]+(\.\d{2})?)/);
+                const text = card.innerText;
+                const html = card.innerHTML;
+
+                // Price extraction - looking for £ symbol
+                const priceMatch = text.match(/£\s?([\d,]+(\.\d{2})?)/) || html.match(/£\s?([\d,]+(\.\d{2})?)/);
+
                 if (priceMatch) {
                     const price = parseFloat(priceMatch[1].replace(/,/g, ''));
-                    // Title is usually the first few words or the first line
-                    const lines = text.split('\n').filter(l => l.trim().length > 3);
-                    const title = lines[0] || "Refurbished Product";
+                    if (isNaN(price)) return;
+
+                    // Title extraction - look for specific data-test attributes
+                    const titleEl = card.querySelector('[data-test="product-title"], .productTitle, h2, h3');
+                    let title = titleEl ? titleEl.innerText : "";
+
+                    if (!title || title.length < 5) {
+                        const lines = text.split('\n').filter(l => l.trim().length > 3);
+                        title = lines.find(l => !l.includes('£')) || lines[0] || "Refurbished Product";
+                    }
+
+                    // Image extraction
+                    const imgEl = card.querySelector('img');
+                    const img = imgEl ? (imgEl.src || imgEl.getAttribute('data-src')) : null;
 
                     results.push({
                         source: 'BackMarket',
                         title: title.trim(),
                         price: price,
                         currency: 'GBP',
-                        link: link.href,
+                        link: linkEl.href,
+                        image: img,
                         condition: 'Refurbished'
                     });
                 }
             });
+
+            // Nuclear Fallback: If no /p/ links found, search for anything with a price symbol
+            if (results.length === 0) {
+                const allLinks = Array.from(document.querySelectorAll('a'));
+                allLinks.forEach(link => {
+                    if (link.innerText.includes('£')) {
+                        const m = link.innerText.match(/£\s?([\d,]+(\.\d{2})?)/);
+                        if (m) {
+                            results.push({
+                                source: 'BackMarket',
+                                title: link.innerText.split('\n')[0].trim(),
+                                price: parseFloat(m[1].replace(/,/g, '')),
+                                currency: 'GBP',
+                                link: link.href,
+                                condition: 'Refurbished'
+                            });
+                        }
+                    }
+                });
+            }
 
             return results;
         });
@@ -643,7 +680,8 @@ async function scrapeCashConverters(query, location = 'US') {
     }
 
     let browser;
-    const url = `https://www.cashconverters.co.uk/shop?search=${encodeURIComponent(query)}`;
+    // Updated search URL to the working structure
+    const url = `https://www.cashconverters.co.uk/search-results?query=${encodeURIComponent(query)}`;
 
     try {
         console.log(`CashConverters Search URL: ${url}`);
@@ -651,42 +689,80 @@ async function scrapeCashConverters(query, location = 'US') {
         const page = await createStealthContext(browser, 'UK');
 
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(3000);
+
+        // Wait for product cards
+        try {
+            await page.waitForSelector('.product-item, .product-item-wrapper', { timeout: 10000 });
+        } catch (e) {
+            console.warn('CashConverters: Timeout waiting for product cards');
+        }
 
         const items = await page.evaluate(() => {
             const results = [];
-            // Generic strategy for CashConverters
-            const allLinks = Array.from(document.querySelectorAll('a'));
+            // Target specific product items
+            const cards = document.querySelectorAll('.product-item');
 
-            const cards = allLinks.filter(l => {
-                const t = l.innerText;
-                return t.includes('£') && t.length > 5;
-            });
+            if (cards.length === 0) {
+                // Fallback to more generic strategy if specific selector fails
+                const allLinks = Array.from(document.querySelectorAll('a'));
+                const genericCards = allLinks.filter(l => {
+                    const t = l.innerText;
+                    return t.includes('£') && t.length > 10;
+                });
 
-            console.log(`CashConverters: Found ${cards.length} generic items`);
+                genericCards.forEach(card => {
+                    const text = card.innerText;
+                    const priceMatch = text.match(/£\s?(\d{1,3}(,\d{3})*(\.\d{2})?)/);
+
+                    if (priceMatch) {
+                        const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+                        const lines = text.split('\n').filter(l => l.trim().length > 2);
+                        const title = lines.find(l => !l.includes('£') && l.length > 5) || lines[0];
+                        const imgEl = card.querySelector('img');
+
+                        if (!isNaN(price) && title) {
+                            results.push({
+                                source: 'CashConverters',
+                                title: title.trim(),
+                                price: price,
+                                currency: 'GBP',
+                                link: card.href,
+                                image: imgEl ? (imgEl.src || imgEl.getAttribute('data-src')) : null,
+                                condition: 'Used',
+                                location: 'UK Store'
+                            });
+                        }
+                    }
+                });
+                return results;
+            }
 
             cards.forEach(card => {
-                const text = card.innerText;
-                const priceMatch = text.match(/£\s?(\d{1,3}(,\d{3})*(\.\d{2})?)/);
+                const titleEl = card.querySelector('.product-item__title__description') || card.querySelector('.product-item__title') || card.querySelector('h4') || card.querySelector('a');
+                const priceEl = card.querySelector('.product-item__price') || card.querySelector('.price') || card.querySelector('.product-item__body');
+                const imgEl = card.querySelector('img');
+                const linkEl = card.querySelector('a');
 
-                if (priceMatch) {
-                    const price = parseFloat(priceMatch[1].replace(/,/g, ''));
-                    const lines = text.split('\n');
-                    const title = lines.find(l => !l.includes('£') && l.length > 5) || lines[0];
-                    const imgEl = card.querySelector('img');
+                if (titleEl && priceEl) {
+                    const priceText = priceEl.textContent.trim();
+                    const priceMatch = priceText.match(/£\s?([\d,]+(\.\d{2})?)/);
 
-                    if (!isNaN(price) && title) {
-                        results.push({
-                            source: 'CashConverters',
-                            title: title.trim(),
-                            price: price,
-                            currency: 'GBP',
-                            link: card.href,
-                            image: imgEl ? imgEl.src : null,
-                            condition: 'Used',
-                            originalPrice: priceMatch[0],
-                            location: 'UK Store'
-                        });
+                    if (priceMatch) {
+                        const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+                        if (!isNaN(price)) {
+                            results.push({
+                                source: 'CashConverters',
+                                title: titleEl.textContent.trim(),
+                                price: price,
+                                currency: 'GBP',
+                                link: linkEl ? linkEl.href : 'https://www.cashconverters.co.uk',
+                                image: imgEl ? (imgEl.src || imgEl.getAttribute('data-src')) : (card.querySelector('.product-item__image img')?.src || null),
+                                condition: 'Used',
+                                originalPrice: priceText,
+                                location: 'UK Store'
+                            });
+                        }
                     }
                 }
             });
@@ -695,7 +771,8 @@ async function scrapeCashConverters(query, location = 'US') {
 
         // Deduplicate
         const unique = items.filter((v, i, a) => a.findIndex(v2 => (v2.link === v.link)) === i);
-        return { results: unique.slice(0, 10), url };
+        console.log(`CashConverters: Successfully extracted ${unique.length} items`);
+        return { results: unique.slice(0, 15), url };
     } catch (error) {
         console.error('CashConverters Scrape Error:', error.message);
         return { results: [], url };
@@ -704,71 +781,6 @@ async function scrapeCashConverters(query, location = 'US') {
     }
 }
 
-async function scrapeCexSell(query) {
-    let browser;
-    // CeX Sell URL
-    const url = `https://uk.webuy.com/sell/search?stext=${encodeURIComponent(query)}`;
-
-    try {
-        console.log(`CeX Sell Search URL: ${url}`);
-        browser = await getBrowser();
-        const page = await createStealthContext(browser, 'UK');
-
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await page.waitForTimeout(2000);
-
-        // Wait for results
-        try {
-            await page.waitForSelector('.wrapper-box, .cash-price', { timeout: 15000 });
-        } catch (e) {
-            console.warn('CeX Sell: Timeout waiting for product cards');
-        }
-
-        const items = await page.evaluate(() => {
-            const results = [];
-            // Sell side uses .wrapper-box instead of .product-card / .cx-card-product
-            const cards = document.querySelectorAll('.wrapper-box');
-
-            cards.forEach(card => {
-                const titleEl = card.querySelector('.line-clamp') || card.querySelector('h3');
-                const cashPriceEl = card.querySelector('.cash-price');
-                const voucherPriceEl = card.querySelector('.cash-voucher');
-
-                if (titleEl && (cashPriceEl || voucherPriceEl)) {
-                    let cashPrice = 0;
-                    if (cashPriceEl) {
-                        const priceText = cashPriceEl.textContent.trim();
-                        const match = priceText.match(/[\£\$]\s?([\d,]+(\.\d{2})?)/);
-                        cashPrice = match ? parseFloat(match[1].replace(/,/g, '')) : 0;
-                    }
-
-                    const title = titleEl.innerText.trim();
-                    const imgEl = card.querySelector('img');
-
-                    if (!isNaN(cashPrice) && cashPrice > 0) {
-                        results.push({
-                            title: title,
-                            cashPrice: cashPrice,
-                            currency: 'GBP',
-                            link: card.querySelector('a')?.href || 'https://uk.webuy.com/sell',
-                            image: imgEl ? imgEl.src : null
-                        });
-                    }
-                }
-            });
-            return results;
-        });
-
-        console.log(`CeX Sell: Found ${items.length} items`);
-        return { results: items, url };
-
-    } catch (error) {
-        console.error('CeX Sell Scrape Error:', error.message);
-        return { results: [], url };
-    } finally {
-        if (browser) await browser.close();
-    }
-}
 
 async function scrapePopularProducts(query, location = 'UK', count = 50) {
     let browser;
@@ -863,6 +875,5 @@ module.exports = {
     scrapeGumtree,
     scrapeBackMarket,
     scrapeCashConverters,
-    scrapeCexSell,
     scrapePopularProducts
 };
