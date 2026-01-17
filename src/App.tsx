@@ -52,7 +52,8 @@ function App() {
       { id: 'cex', name: 'CeX' },
       { id: 'gumtree', name: 'Gumtree' },
       { id: 'cashconverters', name: 'CashConverters' },
-      { id: 'backmarket', name: 'BackMarket' }
+      { id: 'backmarket', name: 'BackMarket' },
+      { id: 'kelkoo', name: 'Kelkoo' }
     ];
 
     setCurrency(location === 'UK' ? 'GBP' : 'USD');

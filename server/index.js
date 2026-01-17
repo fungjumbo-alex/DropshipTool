@@ -6,9 +6,8 @@ const {
     scrapeCex,
     scrapeGumtree,
     scrapeBackMarket,
-    scrapeMusicMagpie,
     scrapeCashConverters,
-    scrapeCexSell,
+    scrapeKelkoo,
     scrapePopularProducts
 } = require('./scrapers');
 const { scrapeWithFallback, isBrowserUseAvailable } = require('./browserUseIntegration');
@@ -86,7 +85,8 @@ app.get('/api/compare', async (req, res) => {
                 name: 'BackMarket',
                 fn: () => scrapeWithFallback(query, 'backmarket', location, scrapeBackMarket)
             },
-            { id: 'cashconverters', name: 'CashConverters', fn: () => scrapeCashConverters(query, location) }
+            { id: 'cashconverters', name: 'CashConverters', fn: () => scrapeCashConverters(query, location) },
+            { id: 'kelkoo', name: 'Kelkoo', fn: () => scrapeWithFallback(query, 'kelkoo', location, scrapeKelkoo) }
         ];
 
         // Filter by source if requested

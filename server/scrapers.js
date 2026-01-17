@@ -630,8 +630,14 @@ async function scrapeBackMarket(query, location = 'US') {
             // Nuclear Fallback: If no /p/ links found, search for anything with a price symbol
             if (results.length === 0) {
                 const allLinks = Array.from(document.querySelectorAll('a'));
+                const queryKeywords = window.location.search.match(/q=([^&]*)/)?.[1]?.split('+') || [];
+
                 allLinks.forEach(link => {
-                    if (link.innerText.includes('£')) {
+                    const text = link.innerText.toLowerCase();
+                    // Basic relevance check to avoid random recommendations (like cameras for treadmills)
+                    const isRelevant = queryKeywords.length === 0 || queryKeywords.some(kw => text.includes(decodeURIComponent(kw).toLowerCase()));
+
+                    if (link.innerText.includes('£') && isRelevant) {
                         const m = link.innerText.match(/£\s?([\d,]+(\.\d{2})?)/);
                         if (m) {
                             results.push({
@@ -640,6 +646,7 @@ async function scrapeBackMarket(query, location = 'US') {
                                 price: parseFloat(m[1].replace(/,/g, '')),
                                 currency: 'GBP',
                                 link: link.href,
+                                image: link.querySelector('img')?.src || null,
                                 condition: 'Refurbished'
                             });
                         }
@@ -783,6 +790,104 @@ async function scrapeCashConverters(query, location = 'US') {
 }
 
 
+async function scrapeKelkoo(query, location = 'UK') {
+    if (location.toUpperCase() !== 'UK') {
+        return { results: [], url: '' };
+    }
+
+    // Kelkoo UK URL - using the query provided by user requirements
+    const url = `https://www.kelkoo.co.uk/search?query=${encodeURIComponent(query)}`;
+    let browser;
+    try {
+        console.log(`Starting Kelkoo Parse: ${url}`);
+        browser = await getBrowser();
+        const page = await createStealthContext(browser, 'UK', {
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            viewport: { width: 1440, height: 900 }
+        });
+
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 35000 });
+
+        // Wait for results to actually land
+        try {
+            await page.waitForSelector('a.group, span.text-2xl.font-bold, .text-primary-site.font-bold', { timeout: 10000 });
+        } catch (e) {
+            console.warn('Kelkoo: Timeout waiting for main selectors');
+        }
+
+        // Handle cookie modal if it exists
+        try {
+            await page.evaluate(() => {
+                const buttons = Array.from(document.querySelectorAll('button, a'));
+                const agreeBtn = buttons.find(b => {
+                    const t = b.innerText.toUpperCase();
+                    return t.includes('AGREE') || t.includes('ACCEPT ALL') || t.includes('ALLOW ALL') || t.includes('CONSENT') || t.includes('OK');
+                });
+                if (agreeBtn) agreeBtn.click();
+            });
+            await page.waitForTimeout(2000);
+        } catch (e) { }
+
+        // DEBUG: Take a screenshot to see what's happening
+        await page.screenshot({ path: 'kelkoo_debug.png' });
+        console.log('Kelkoo debug screenshot saved');
+
+        const items = await page.evaluate(() => {
+            const results = [];
+            // Selectors based on recent DOM analysis
+            const cards = Array.from(document.querySelectorAll('a.group, div[class*="product-card"], li[class*="product"]'));
+
+            cards.forEach(card => {
+                const titleEl = card.querySelector('p.line-clamp-2, [class*="title"], h3, h4');
+                const priceEl = card.querySelector('span.text-2xl.font-bold, [class*="price"], .price');
+                const imgEl = card.querySelector('img');
+                const linkEl = card.tagName === 'A' ? card : card.querySelector('a');
+
+                if (titleEl && priceEl) {
+                    const priceText = priceEl.innerText.trim();
+                    // Match £ followed by numbers, decimals, and optional commas
+                    const match = priceText.match(/£\s?([\d,]+(\.\d{2})?)/);
+
+                    if (match) {
+                        const price = parseFloat(match[1].replace(/,/g, ''));
+                        const title = titleEl.innerText.trim();
+                        const lowerTitle = title.toLowerCase();
+
+                        // Relevance check (Kelkoo sometimes shows unrelated recommended products)
+                        const queryLower = new URL(window.location.href).searchParams.get('query')?.toLowerCase() || '';
+                        const keywords = queryLower.split(' ').filter(k => k.length > 2);
+                        const isRelevant = keywords.length === 0 || keywords.some(k => lowerTitle.includes(k));
+
+                        if (!isNaN(price) && price > 0 && isRelevant) {
+                            results.push({
+                                source: 'Kelkoo',
+                                title: title,
+                                price: price,
+                                currency: 'GBP',
+                                link: linkEl ? linkEl.href : window.location.href,
+                                image: imgEl ? (imgEl.src || imgEl.getAttribute('data-src') || imgEl.getAttribute('src')) : null,
+                                condition: 'New',
+                                location: 'UK Store'
+                            });
+                        }
+                    }
+                }
+            });
+            return results;
+        });
+
+        console.log(`Kelkoo: Found ${items.length} items`);
+        // Filter out highly unlikely items if needed, but Kelkoo is usually clean
+        return { results: items.slice(0, 15), url };
+
+    } catch (error) {
+        console.error('Kelkoo Scrape Error:', error.message);
+        return { results: [], url, error: error.message };
+    } finally {
+        if (browser) await browser.close();
+    }
+}
+
 async function scrapePopularProducts(query, location = 'UK', count = 50) {
     let browser;
     try {
@@ -876,5 +981,6 @@ module.exports = {
     scrapeGumtree,
     scrapeBackMarket,
     scrapeCashConverters,
+    scrapeKelkoo,
     scrapePopularProducts
 };

@@ -94,6 +94,7 @@ class DropshipBrowserAgent:
             'backmarket': f'https://www.backmarket.co.uk/en-gb/search?q={query.replace(" ", "+")}',
             'cex': f'https://uk.webuy.com/search?stext={query.replace(" ", "+")}',
             'cashconverters': f'https://www.cashconverters.co.uk/search-results?query={query.replace(" ", "+")}',
+            'kelkoo': f'https://www.kelkoo.co.uk/search?query={query.replace(" ", "+")}',
         }
         
         url = marketplace_urls.get(marketplace.lower(), marketplace_urls['ebay'])
@@ -105,6 +106,7 @@ IMPORTANT:
 1. If you encounter a "Just a moment..." or "Checking your browser" page (Cloudflare), wait for it to finish. Do not give up.
 2. For Back Market, look for items in the search results grid. Product links typically contain "/p/" or "/en-gb/p/".
 3. For Cash Converters, look for items with class ".product-item".
+4. For Kelkoo, handle the privacy "AGREE" button and look for product cards with class "group".
 
 For each product listing, extract:
 1. Product title
