@@ -68,8 +68,7 @@ async function getBrowser() {
 async function createStealthContext(browser, location = 'UK', options = {}) {
     const userAgents = [
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
     ];
 
     const userAgent = options.userAgent || userAgents[Math.floor(Math.random() * userAgents.length)];
@@ -83,7 +82,13 @@ async function createStealthContext(browser, location = 'UK', options = {}) {
         colorScheme: 'light',
         deviceScaleFactor: 1,
         hasTouch: !!options.hasTouch,
-        isMobile: !!options.isMobile
+        isMobile: !!options.isMobile,
+        extraHTTPHeaders: {
+            'Accept-Language': location.toUpperCase() === 'UK' ? 'en-GB,en;q=0.9' : 'en-US,en;q=0.9',
+            'Sec-CH-UA': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            'Sec-CH-UA-Mobile': options.isMobile ? '?1' : '?0',
+            'Sec-CH-UA-Platform': userAgent.includes('Windows') ? '"Windows"' : '"macOS"'
+        }
     });
 
     const page = await context.newPage();
@@ -93,30 +98,21 @@ async function createStealthContext(browser, location = 'UK', options = {}) {
         // Modern bot detection removal
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
 
-        // Canvas Fingerprinting prevention
-        const originalGetContext = HTMLCanvasElement.prototype.getContext;
-        HTMLCanvasElement.prototype.getContext = function (type) {
-            const context = originalGetContext.apply(this, arguments);
-            if (type === '2d' && context) {
-                const originalGetImageData = context.getImageData;
-                context.getImageData = function () {
-                    const imageData = originalGetImageData.apply(this, arguments);
-                    if (imageData && imageData.data) {
-                        imageData.data[0] = imageData.data[0] + (Math.random() > 0.5 ? 1 : -1);
-                    }
-                    return imageData;
-                };
-            }
-            return context;
+        // Chrome Runtime mock
+        window.chrome = {
+            runtime: {},
+            loadTimes: function () { },
+            csi: function () { },
+            app: {}
         };
 
-        // Plugins mock
-        Object.defineProperty(navigator, 'plugins', {
-            get: () => [
-                { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-                { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' }
-            ]
-        });
+        // Permissions mock
+        const originalQuery = window.navigator.permissions.query;
+        window.navigator.permissions.query = (parameters) => (
+            parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+        );
 
         // WebGL Spoofing
         const getParameter = WebGLRenderingContext.prototype.getParameter;
@@ -127,9 +123,6 @@ async function createStealthContext(browser, location = 'UK', options = {}) {
             if (parameter === 37446) return 'Mesa DRI Intel(R) HD Graphics 5500 (Broadwell GT2)';
             return getParameter.apply(this, arguments);
         };
-
-        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-        window.chrome = { runtime: {} };
     });
 
     return page;
@@ -542,7 +535,7 @@ async function scrapeGumtree(query, location = 'US') {
 }
 
 async function scrapeBackMarket(query, location = 'US') {
-    // Only run for UK for now, but return URL for debug visibility
+    // Only run for UK for now
     const url = `https://www.backmarket.co.uk/en-gb/search?q=${encodeURIComponent(query)}`;
 
     if (location.toUpperCase() !== 'UK') {
@@ -554,92 +547,91 @@ async function scrapeBackMarket(query, location = 'US') {
         console.log(`Starting BackMarket Parse: ${url}`);
 
         browser = await getBrowser();
-        const page = await createStealthContext(browser, 'UK');
-
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await page.waitForTimeout(2000);
-
-        // Try to click "Accept all" cookies if it exists
-        try {
-            const buttons = await page.$$('button');
-            for (const btn of buttons) {
-                const text = await btn.innerText();
-                if (text.toLowerCase().includes('accept') || text.toLowerCase().includes('agree')) {
-                    await btn.click();
-                    break;
-                }
-            }
-        } catch (e) { }
-        await page.evaluate(async () => {
-            for (let i = 0; i < 5; i++) {
-                window.scrollBy(0, 600);
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
+        // Reset to clean iPhone UA - often more successful with Algolia/CORS
+        const page = await createStealthContext(browser, 'UK', {
+            userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+            viewport: { width: 390, height: 844 },
+            isMobile: true,
+            hasTouch: true
         });
 
-        // Debug: Log title
-        const pageTitle = await page.title();
-        console.log(`BackMarket Page Title: ${pageTitle}`);
+        // Standard navigation
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
 
-        // Wait for ANY content
-        try {
-            await Promise.race([
-                page.waitForSelector('div[data-test="product-item"]', { timeout: 10000 }),
-                page.waitForSelector('div.productCard', { timeout: 10000 }),
-                page.waitForSelector('main', { timeout: 10000 })
-            ]);
-        } catch (e) {
-            console.warn('BackMarket: Timeout waiting for specific selectors');
+        // Wait for page stabilization
+        let passed = false;
+        for (let i = 0; i < 20; i++) {
+            try {
+                const title = await page.title();
+                const content = await page.content();
+
+                if (title.includes('Just a moment') || title.includes('Checking your browser')) {
+                    console.log(`BackMarket: Waiting for Cloudflare (${i + 1}/20)...`);
+                    await page.waitForTimeout(4000);
+                } else if (content.includes('product-item') || content.includes('productCard') || content.includes('Back Market') || content.includes('/p/')) {
+                    passed = true;
+                    break;
+                } else {
+                    await page.waitForTimeout(2000);
+                }
+            } catch (e) {
+                await page.waitForTimeout(4000);
+            }
         }
+
+        // Extra wait for Algolia to render
+        await page.waitForTimeout(5000);
 
         const items = await page.evaluate(() => {
             const results = [];
-            // Try multiple selector strategies
-            const potentials = document.querySelectorAll('div[data-test="product-item"], a[data-test="product-item"], li');
+            // Target any link that goes to a product page
+            const containers = Array.from(document.querySelectorAll('a[href*="/p/"]'));
 
-            console.log(`BackMarket: Found ${potentials.length} potential items`);
-
-            potentials.forEach(card => {
-                // Heuristic: Must contain a price and a title
-                const text = card.innerText;
+            containers.forEach(link => {
+                const text = link.innerText;
                 if (!text.includes('£')) return;
 
-                const linkEl = card.tagName === 'A' ? card : card.querySelector('a');
-                if (!linkEl) return;
+                const priceMatch = text.match(/£\s?([\d,]+(\.\d{2})?)/);
+                if (priceMatch) {
+                    const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+                    // Title is usually the first few words or the first line
+                    const lines = text.split('\n').filter(l => l.trim().length > 3);
+                    const title = lines[0] || "Refurbished Product";
 
-                const titleEl = card.querySelector('h2') || card.querySelector('h3') || card.querySelector('.productTitle');
-                const priceMatch = text.match(/£[\d,]+(\.\d{2})?/); // Regex find price
-
-                if (titleEl && priceMatch) {
-                    const price = parseFloat(priceMatch[0].replace(/[^0-9.]/g, ''));
-                    const title = titleEl.innerText.trim();
-                    const imgEl = card.querySelector('img');
-
-                    if (!isNaN(price) && title.length > 5) {
-                        results.push({
-                            source: 'BackMarket',
-                            title: title,
-                            price: price,
-                            currency: 'GBP',
-                            link: linkEl.href.startsWith('http') ? linkEl.href : `https://www.backmarket.co.uk${linkEl.getAttribute('href')}`,
-                            image: imgEl ? imgEl.src : null,
-                            condition: 'Refurbished',
-                            originalPrice: priceMatch[0],
-                            warranty: '12 Month Warranty',
-                            stock: 'In Stock'
-                        });
-                    }
+                    results.push({
+                        source: 'BackMarket',
+                        title: title.trim(),
+                        price: price,
+                        currency: 'GBP',
+                        link: link.href,
+                        condition: 'Refurbished'
+                    });
                 }
             });
+
             return results;
         });
 
-        console.log(`BackMarket: Extracted ${items.length} items`);
-        return { results: items.slice(0, 10), url };
+        // Deduplicate
+        const uniqueItems = items.filter((v, i, a) => a.findIndex(t => (t.link === v.link)) === i);
+        console.log(`BackMarket: Successfully extracted ${uniqueItems.length} items`);
+
+        return {
+            results: uniqueItems.slice(0, 15),
+            url,
+            scraperName: 'BackMarket',
+            scraperId: 'backmarket'
+        };
 
     } catch (error) {
         console.error('BackMarket Scrape Error:', error.message);
-        return { results: [], url };
+        return {
+            results: [],
+            url,
+            error: error.message,
+            scraperName: 'BackMarket',
+            scraperId: 'backmarket'
+        };
     } finally {
         if (browser) await browser.close();
     }
